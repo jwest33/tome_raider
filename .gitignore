@@ -49,7 +49,9 @@ dmypy.json
 logs/
 
 # Dataset files
+datasets/
 .cache/
+.index/
 reviews/
 data/
 
