@@ -36,7 +36,7 @@ pip install -e .
 tome-raider generate self-instruct --model c:\models\Qwen3-4B-Instruct-2507\Qwen3-4B-Instruct-2507-Q8_0.gguf --count 100 --output test_001
 ```
 
-![generate](docs\example_dataset_generation.jpg)
+![generate](docs/example_dataset_generation.jpg)
 
 ### 2. Run a Pipeline
 
@@ -55,7 +55,7 @@ tome-raider validate check my_dataset --strict
 tome-raider quality score my_dataset --save
 ```
 
-![validate](docs\example_dataset_validate.jpg)
+![validate](docs/example_dataset_validate.jpg)
 
 ### 4. Manage Datasets
 
@@ -70,7 +70,7 @@ tome-raider dataset info my_dataset
 tome-raider dataset delete my_dataset
 ```
 
-![list](docs\example_dataset_list.jpg)
+![list](docs/example_dataset_list.jpg)
 
 ## Usage Guide
 
