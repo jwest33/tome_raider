@@ -17,7 +17,7 @@ An LLM powered dataset builder for creating high-quality training datasets for G
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/jwest33/tome_raider
 cd data_gen
 
 # Install dependencies
