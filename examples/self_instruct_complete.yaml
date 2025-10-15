@@ -1,0 +1,302 @@
+# Complete Self-Instruct Pipeline Example
+# This file demonstrates ALL available configuration options for self-instruct generation
+# Copy this file and customize it for your needs
+# Usage: dataset-builder run examples/self_instruct_complete.yaml
+
+# ==============================================================================
+# PIPELINE METADATA
+# ==============================================================================
+
+name: "Self-Instruct Complete Example"
+description: "Comprehensive example showing all self-instruct configuration options"
+
+# Profile to use (optional)
+# Options: "default", "dev", "prod"
+# Leave commented to use default profile
+# profile: "default"
+
+# ==============================================================================
+# PIPELINE OPERATIONS
+# ==============================================================================
+
+operations:
+  # --------------------------------------------------------------------------
+  # STEP 1: Generate samples using self-instruct
+  # --------------------------------------------------------------------------
+  - name: "Generate instruction-response pairs"
+    type: "generate"
+    config:
+      # Strategy type (required)
+      strategy: "self_instruct"
+
+      # Model path (required)
+      # Path to your GGUF model file
+      model: "models/Qwen3-4B-Instruct-2507/Qwen3-4B-Instruct-2507-Q8_0.gguf"
+
+      # Target count (required)
+      # Total number of samples to generate
+      target_count: 100
+
+      # Custom seed tasks (optional)
+      # If not provided, uses default seeds from the code
+      # These are the starting instructions that will be used to generate variations
+      seed_tasks:
+        # Programming/Coding seeds
+        - "Write a Python function that checks if a string is a palindrome"
+        - "Explain how to implement a binary search tree in JavaScript"
+        - "Create a function to calculate the Fibonacci sequence recursively"
+        - "Write a SQL query to find duplicate records in a table"
+        - "Explain the difference between synchronous and asynchronous programming"
+
+        # Math/Logic seeds
+        - "Explain how to solve a quadratic equation step by step"
+        - "Describe the process of finding the least common multiple of two numbers"
+        - "Write a tutorial on calculating compound interest"
+        - "Explain the concept of derivatives in calculus"
+        - "Describe how to calculate probability in basic scenarios"
+
+        # Science seeds
+        - "Explain the process of cellular respiration in simple terms"
+        - "Describe how the water cycle works with detailed stages"
+        - "Explain Newton's three laws of motion with examples"
+        - "Describe the structure and function of DNA"
+        - "Explain the difference between mitosis and meiosis"
+
+        # Writing/Creative seeds
+        - "Write a short story about an unexpected friendship"
+        - "Compose a poem about the changing seasons"
+        - "Create a character description for a fantasy novel"
+        - "Write a persuasive essay outline on renewable energy"
+        - "Describe a setting for a mystery novel in vivid detail"
+
+        # General Knowledge seeds
+        - "Explain the causes of World War I in detail"
+        - "Describe the economic concept of supply and demand"
+        - "Explain how machine learning algorithms work"
+        - "Describe the key principles of effective communication"
+        - "Explain the structure of the United Nations"
+
+      # Generations per seed (optional, default: 5)
+      # Number of variations to generate from each seed task
+      # Higher values = more samples per seed, but less diversity
+      generations_per_seed: 4
+
+      # LLM Generation parameters (optional)
+      # These control the creativity and randomness of the LLM output
+
+      # Temperature (optional, default: 0.7)
+      # Range: 0.0 to 2.0
+      # Lower = more focused and deterministic
+      # Higher = more creative and random
+      temperature: 0.7
+
+      # Top-p sampling (optional, default: 0.9)
+      # Range: 0.0 to 1.0
+      # Controls diversity of token selection
+      top_p: 0.9
+
+      # Max tokens (optional, default: 1024)
+      # Maximum length of generated text
+      # Adjust based on desired response length
+      max_tokens: 1024
+
+      # Quality filters (optional)
+      # Samples below these thresholds are discarded
+
+      # Minimum instruction length in characters (optional, default: 20)
+      min_instruction_length: 20
+
+      # Minimum response length in characters (optional, default: 50)
+      min_response_length: 50
+
+  # --------------------------------------------------------------------------
+  # STEP 2: Validate all generated samples
+  # --------------------------------------------------------------------------
+  - name: "Validate generated samples"
+    type: "validate"
+    config:
+      # Use strict validation rules (optional, default: true)
+      strict: true
+
+      # Remove invalid samples from dataset (optional, default: false)
+      # If true, invalid samples are discarded
+      # If false, invalid samples are kept but flagged
+      remove_invalid: true
+
+      # Stop on first error (optional, default: false)
+      # Only useful for debugging
+      stop_on_error: false
+
+  # --------------------------------------------------------------------------
+  # STEP 3: Remove duplicate samples
+  # --------------------------------------------------------------------------
+  - name: "Remove duplicates"
+    type: "deduplicate"
+    config:
+      # Remove exact duplicates (optional, default: true)
+      # Matches on exact text similarity
+      exact: true
+
+      # Remove near-duplicates (optional, default: false)
+      # Uses fuzzy matching to find similar samples
+      near: true
+
+      # Near-duplicate threshold (optional, default: 0.85)
+      # Range: 0.0 to 1.0
+      # Higher = more strict (only very similar samples removed)
+      # Lower = more lenient (more samples removed)
+      # Only used if near: true
+      threshold: 0.90
+
+  # --------------------------------------------------------------------------
+  # STEP 4: Score quality of all samples
+  # --------------------------------------------------------------------------
+  - name: "Score sample quality"
+    type: "quality"
+    config: {}
+    # Quality scoring evaluates:
+    # - Instruction clarity (grammar, readability, specificity)
+    # - Instruction complexity (vocabulary richness, concept depth)
+    # - Response completeness (addresses all aspects)
+    # - Response coherence (logical flow and structure)
+    # - Alignment (response matches instruction intent)
+    # - Diversity (vocabulary variety)
+    # Results stored in sample.metadata.quality_score (0.0 to 1.0)
+
+  # --------------------------------------------------------------------------
+  # STEP 5: Filter to high-quality samples only
+  # --------------------------------------------------------------------------
+  - name: "Filter high quality samples"
+    type: "filter"
+    config:
+      # Minimum quality score (optional)
+      # Range: 0.0 to 1.0
+      # Samples below this score are removed
+      quality_min: 0.65
+
+      # Maximum quality score (optional)
+      # Range: 0.0 to 1.0
+      # Samples above this score are removed (rarely used)
+      # quality_max: 1.0
+
+      # Filter by source types (optional)
+      # Only include samples from these sources
+      # source_types: ["generated"]
+
+      # Filter by tags (optional)
+      # Only include samples with these tags
+      # tags: ["self_instruct"]
+
+      # Tag matching mode (optional, default: "any")
+      # "any" = sample must have at least one tag
+      # "all" = sample must have all tags
+      # tags_mode: "any"
+
+      # Filter by review status (optional)
+      # Only include samples with these review statuses
+      # Options: "pending", "approved", "rejected", "flagged"
+      # review_statuses: ["approved"]
+
+  # --------------------------------------------------------------------------
+  # STEP 6: Save final dataset
+  # --------------------------------------------------------------------------
+  - name: "Save final dataset"
+    type: "save"
+    config:
+      # Dataset name (required)
+      # This will be the name used to load the dataset later
+      name: "my_self_instruct_dataset"
+
+      # Output format (optional, default: "jsonl")
+      # Options: "jsonl", "json", "csv", "parquet"
+      format: "jsonl"
+
+# ==============================================================================
+# OPTIONAL: Additional pipeline operations you can add
+# ==============================================================================
+
+# Load existing dataset and append to it:
+# - name: "Load existing dataset"
+#   type: "load"
+#   config:
+#     name: "existing_dataset"
+
+# Load from file source:
+# - name: "Load from files"
+#   type: "source"
+#   config:
+#     source_type: "file"
+#     path: "data/*.jsonl"
+#     append: true  # Append to existing dataset (default: true)
+
+# Load from HuggingFace:
+# - name: "Load from HuggingFace"
+#   type: "source"
+#   config:
+#     source_type: "huggingface"
+#     dataset: "openai/gsm8k"
+#     split: "train"
+#     subset: "main"
+#     append: true
+
+# ==============================================================================
+# NOTES AND TIPS
+# ==============================================================================
+
+# 1. Seed Task Design:
+#    - Be specific and clear in your seed tasks
+#    - Cover diverse domains for better variety
+#    - Use action verbs (Write, Explain, Describe, Create, etc.)
+#    - Each seed should be completable with a detailed response
+#
+# 2. Generation Parameters:
+#    - Lower temperature (0.3-0.5) for factual/technical content
+#    - Higher temperature (0.7-0.9) for creative content
+#    - Adjust max_tokens based on desired response length
+#
+# 3. Quality Control:
+#    - Always validate and deduplicate
+#    - Use quality scoring to filter low-quality samples
+#    - Start with quality_min: 0.6, adjust based on results
+#
+# 4. Performance:
+#    - Each sample requires 2 LLM calls (instruction + response)
+#    - 100 samples with 25 seeds × 4 generations = ~200 API calls
+#    - Consider batch sizes and model speed for large datasets
+#
+# 5. Customization:
+#    - Modify seed_tasks to match your domain
+#    - Adjust generations_per_seed based on desired diversity
+#    - Fine-tune quality thresholds after initial generation
+#
+# 6. File Locations:
+#    - Generated datasets saved to: ./datasets/
+#    - Logs saved to: ./logs/
+#    - Cache files in: ./.cache/
+
+# ==============================================================================
+# EXAMPLE EXPECTED OUTPUT STRUCTURE
+# ==============================================================================
+
+# Each generated sample will have this structure:
+# {
+#   "instruction": "Write a Python function that checks if a number is even",
+#   "response": "Here's a Python function that checks if a number is even:\n\n```python\ndef is_even(number):\n    return number % 2 == 0\n```\n\nThis function uses the modulo operator (%) to check if the remainder when dividing by 2 is 0. If it is, the number is even and the function returns True. Otherwise, it returns False.",
+#   "metadata": {
+#     "source_type": "generated",
+#     "tags": ["self_instruct"],
+#     "quality_score": 0.78,
+#     "custom": {
+#       "seed_task": "Write a Python function that checks if a string is a palindrome",
+#       "generation_index": 2,
+#       "quality_components": {
+#         "instruction_clarity": 0.85,
+#         "instruction_complexity": 0.72,
+#         "response_completeness": 0.88,
+#         "response_coherence": 0.90,
+#         "alignment": 0.82,
+#         "diversity": 0.65
+#       }
+#     }
+#   }
+# }

@@ -1,0 +1,21 @@
+# Production configuration
+# Inherits from default.yaml with production-specific overrides
+
+extends: "default.yaml"
+
+# Production validation - strict
+validation:
+  strict_mode: true
+
+# Larger batches for efficiency
+generation:
+  batch_size: 16
+  error_retry_attempts: 5
+
+# Use quality scoring model if available
+quality:
+  scoring_model: "models/quality-scorer.gguf"
+
+# Always validate before export
+export:
+  validate_before_export: true

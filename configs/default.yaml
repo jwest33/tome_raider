@@ -1,0 +1,75 @@
+# Default configuration for GRPO Dataset Builder
+
+name: "Dataset Builder Default Config"
+version: "0.1.0"
+
+# Storage configuration
+storage:
+  base_path: "./datasets"
+  index_path: "./.index"
+  cache_path: "./.cache"
+
+# LLM configuration
+llm:
+  server_command: "llama-server"
+  base_url: "http://localhost:8080"
+  default_context_size: 4096
+  health_check_interval: 5
+  request_timeout: 300
+
+# Validation configuration
+validation:
+  strict_mode: true
+  required_fields: ["instruction", "response"]
+  min_instruction_length: 10
+  max_instruction_length: 5000
+  min_response_length: 20
+  max_response_length: 10000
+
+# Quality configuration
+quality:
+  scoring_model: null  # Set to path for ML-based scoring
+  auto_recommend_thresholds: true
+  duplicate_threshold: 0.9
+  near_duplicate_threshold: 0.85
+
+# Generation configuration
+generation:
+  default_temperature: 0.7
+  default_top_p: 0.9
+  default_max_tokens: 1024
+  batch_size: 8
+  error_retry_attempts: 3
+  error_retry_delay: 5
+
+# Review configuration
+review:
+  batch_size: 50
+  default_strategy: "prioritized"
+  priority_weights:
+    flagged: 1000
+    low_quality: 500
+    near_duplicate: 300
+    pending: 100
+
+# Export configuration
+export:
+  default_format: "jsonl"
+  validate_before_export: true
+  never_block: true
+
+# Logging configuration
+logging:
+  level: "INFO"
+  file: "./logs/dataset_builder.log"
+  max_size_mb: 100
+  backup_count: 5
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>"
+
+# Web scraping configuration
+web_scraping:
+  rate_limit: 1.0
+  max_retries: 3
+  timeout: 30
+  respect_robots_txt: true
+  user_agent: "GRPO-Dataset-Builder/0.1.0"

@@ -1,0 +1,63 @@
+# Example pipeline: Build a math reasoning dataset
+# Usage: dataset-builder run examples/math_dataset_pipeline.yaml
+
+name: "Math Reasoning Dataset"
+description: "High-quality math problems with step-by-step solutions"
+
+# Use production profile
+profile: "production"
+
+operations:
+  # Step 1: Load seed problems from HuggingFace
+  - name: "Load seed problems from GSM8K"
+    type: "source"
+    config:
+      source_type: "huggingface"
+      dataset: "openai/gsm8k"
+      split: "train"
+      subset: "main"
+
+  # Step 2: Evolve instructions to create variations
+  - name: "Evolve instructions"
+    type: "generate"
+    config:
+      strategy: "evol_instruct"
+      model: "models/mistral-7b-instruct.gguf"
+      evolution_rounds: 2
+      evolution_types:
+        - "add_constraints"
+        - "deepen_reasoning"
+        - "increase_complexity"
+
+  # Step 3: Validate all samples
+  - name: "Validate samples"
+    type: "validate"
+    config:
+      strict: true
+      remove_invalid: true
+
+  # Step 4: Remove exact duplicates
+  - name: "Remove duplicates"
+    type: "deduplicate"
+    config:
+      exact: true
+      near: true
+      threshold: 0.90
+
+  # Step 5: Score quality
+  - name: "Score quality"
+    type: "quality"
+    config: {}
+
+  # Step 6: Filter to high quality samples
+  - name: "Filter high quality"
+    type: "filter"
+    config:
+      quality_min: 0.7
+
+  # Step 7: Save final dataset
+  - name: "Save dataset"
+    type: "save"
+    config:
+      name: "math_reasoning_final"
+      format: "jsonl"

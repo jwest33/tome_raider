@@ -1,0 +1,21 @@
+{
+  "example_001": {
+    "path": "datasets\\example_001.jsonl",
+    "format": "jsonl",
+    "sample_count": 50,
+    "created_at": "2025-10-15T15:15:36.238615",
+    "updated_at": "2025-10-15T15:15:36.238615",
+    "metadata": {
+      "source_types": {
+        "generated": 50
+      },
+      "tags": {
+        "self_instruct": 50
+      },
+      "review_statuses": {
+        "pending": 50
+      }
+    },
+    "custom_metadata": {}
+  }
+}

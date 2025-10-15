@@ -1,0 +1,24 @@
+# Development configuration
+# Inherits from default.yaml with development-specific overrides
+
+extends: "default.yaml"
+
+# Development logging
+logging:
+  level: "DEBUG"
+
+# Lenient validation for testing
+validation:
+  strict_mode: false
+  min_instruction_length: 5
+  min_response_length: 10
+
+# Smaller batches for faster iteration
+generation:
+  batch_size: 2
+  error_retry_attempts: 1
+
+# Lower quality threshold for testing
+quality:
+  duplicate_threshold: 0.95
+  near_duplicate_threshold: 0.90
