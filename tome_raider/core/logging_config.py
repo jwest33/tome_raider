@@ -19,7 +19,7 @@ def setup_logging(config: Optional[Dict[str, Any]] = None):
     # Default configuration
     default_config = {
         "level": "INFO",
-        "file": "./logs/dataset_builder.log",
+        "file": "./logs/tome_raider.log",
         "max_size_mb": 100,
         "backup_count": 5,
         "format": "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",

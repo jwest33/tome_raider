@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "grpo-dataset-builder"
+name = "grpo-tome-raider"
 version = "0.1.0"
 description = "A comprehensive dataset builder for GRPO LoRA fine-tuning"
 readme = "README.md"
@@ -25,12 +25,12 @@ classifiers = [
 ]
 
 [project.scripts]
-dataset-builder = "cli.main:cli"
+tome-raider = "cli.main:cli"
 
 [project.urls]
-Homepage = "https://github.com/jwest33/grpo-dataset-builder"
-Repository = "https://github.com/jwest33/grpo-dataset-builder"
-Documentation = "https://github.com/jwest33/grpo-dataset-builder/docs"
+Homepage = "https://github.com/jwest33/grpo-tome-raider"
+Repository = "https://github.com/jwest33/grpo-tome-raider"
+Documentation = "https://github.com/jwest33/grpo-tome-raider/docs"
 
 [tool.black]
 line-length = 100
@@ -69,10 +69,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=dataset_builder --cov-report=term-missing --cov-report=html"
+addopts = "-v --cov=tome_raider --cov-report=term-missing --cov-report=html"
 
 [tool.coverage.run]
-source = ["dataset_builder"]
+source = ["tome_raider"]
 omit = ["tests/*", "setup.py"]
 
 [tool.coverage.report]

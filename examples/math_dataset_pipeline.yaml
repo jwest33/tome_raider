@@ -1,5 +1,5 @@
 # Example pipeline: Build a math reasoning dataset
-# Usage: dataset-builder run examples/math_dataset_pipeline.yaml
+# Usage: tome-raider run examples/math_dataset_pipeline.yaml
 
 name: "Math Reasoning Dataset"
 description: "High-quality math problems with step-by-step solutions"

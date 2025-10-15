@@ -33,37 +33,37 @@ pip install -e .
 
 ```bash
 # Generate 100 samples using self-instruct
-dataset-builder generate self-instruct --model c:\models\Qwen3-4B-Instruct-2507\Qwen3-4B-Instruct-2507-Q8_0.gguf --count 100 --output test_001
+tome-raider generate self-instruct --model c:\models\Qwen3-4B-Instruct-2507\Qwen3-4B-Instruct-2507-Q8_0.gguf --count 100 --output test_001
 ```
 
 ### 2. Run a Pipeline
 
 ```bash
 # Execute a complete pipeline from config
-dataset-builder run examples/math_dataset_pipeline.yaml
+tome-raider run examples/math_dataset_pipeline.yaml
 ```
 
 ### 3. Validate and Score Quality
 
 ```bash
 # Validate dataset
-dataset-builder validate check my_dataset --strict
+tome-raider validate check my_dataset --strict
 
 # Score quality
-dataset-builder quality score my_dataset --save
+tome-raider quality score my_dataset --save
 ```
 
 ### 4. Manage Datasets
 
 ```bash
 # List all datasets
-dataset-builder dataset list
+tome-raider dataset list
 
 # Show dataset info
-dataset-builder dataset info my_dataset
+tome-raider dataset info my_dataset
 
 # Delete dataset
-dataset-builder dataset delete my_dataset
+tome-raider dataset delete my_dataset
 ```
 
 ## Usage Guide
@@ -73,7 +73,7 @@ dataset-builder dataset delete my_dataset
 #### Load from Files
 
 ```python
-from dataset_builder.sources.file_loader import FileLoader
+from tome_raider.sources.file_loader import FileLoader
 
 # Load from JSON/JSONL/CSV/Parquet
 loader = FileLoader({"path": "data/*.jsonl"})
@@ -83,7 +83,7 @@ samples = list(loader.load())
 #### Load from HuggingFace
 
 ```python
-from dataset_builder.sources.dataset_loader import DatasetLoader
+from tome_raider.sources.dataset_loader import DatasetLoader
 
 # Load HuggingFace dataset
 loader = DatasetLoader({
@@ -96,7 +96,7 @@ samples = list(loader.load())
 #### Web Scraping
 
 ```python
-from dataset_builder.sources.scrapers.stackoverflow import StackOverflowScraper
+from tome_raider.sources.scrapers.stackoverflow import StackOverflowScraper
 
 # Scrape Stack Overflow
 scraper = StackOverflowScraper({
@@ -111,7 +111,7 @@ samples = list(scraper.load())
 #### Self-Instruct
 
 ```python
-from dataset_builder.generation.generator import DataGenerator
+from tome_raider.generation.generator import DataGenerator
 
 generator = DataGenerator({})
 samples = generator.generate(
@@ -147,7 +147,7 @@ samples = generator.generate(
 #### Validation
 
 ```python
-from dataset_builder.quality.validator import DatasetValidator
+from tome_raider.quality.validator import DatasetValidator
 
 validator = DatasetValidator({"strict_mode": True})
 result = validator.validate_all(samples)
@@ -158,7 +158,7 @@ print(f"Valid: {result['valid']}/{result['total']}")
 #### Quality Scoring
 
 ```python
-from dataset_builder.quality.quality_scorer import QualityScorer
+from tome_raider.quality.quality_scorer import QualityScorer
 
 scorer = QualityScorer()
 
@@ -170,7 +170,7 @@ for sample in samples:
 #### Deduplication
 
 ```python
-from dataset_builder.quality.deduplicator import Deduplicator
+from tome_raider.quality.deduplicator import Deduplicator
 
 dedup = Deduplicator()
 
@@ -184,7 +184,7 @@ unique, removed = dedup.remove_near_duplicates(samples, threshold=0.85)
 ### Storage and Retrieval
 
 ```python
-from dataset_builder.storage.dataset_store import DatasetStore
+from tome_raider.storage.dataset_store import DatasetStore
 
 store = DatasetStore()
 
@@ -251,7 +251,7 @@ operations:
 Run the pipeline:
 
 ```bash
-dataset-builder run my_pipeline.yaml
+tome-raider run my_pipeline.yaml
 ```
 
 ## CLI Commands
@@ -294,7 +294,7 @@ dataset-builder run my_pipeline.yaml
 Use profiles:
 
 ```bash
-dataset-builder --profile dev generate ...
+tome-raider --profile dev generate ...
 ```
 
 ### Environment Variables
@@ -337,15 +337,15 @@ Contributions are welcome! The codebase is designed to be extensible:
 # 4. Score quality
 # 5. Filter and save
 
-dataset-builder run examples/math_dataset_pipeline.yaml
+tome-raider run examples/math_dataset_pipeline.yaml
 ```
 
 ### Scrape and Clean Web Data
 
 ```python
-from dataset_builder.sources.scrapers.stackoverflow import StackOverflowScraper
-from dataset_builder.quality.deduplicator import Deduplicator
-from dataset_builder.storage.dataset_store import DatasetStore
+from tome_raider.sources.scrapers.stackoverflow import StackOverflowScraper
+from tome_raider.quality.deduplicator import Deduplicator
+from tome_raider.storage.dataset_store import DatasetStore
 
 # Scrape
 scraper = StackOverflowScraper({"tags": ["python"], "max_samples": 1000})
@@ -363,7 +363,7 @@ store.save(samples, "stackoverflow_python")
 ### Generate with Distillation
 
 ```python
-from dataset_builder.generation.generator import DataGenerator
+from tome_raider.generation.generator import DataGenerator
 
 generator = DataGenerator({})
 

@@ -1,7 +1,7 @@
 # Complete Self-Instruct Pipeline Example
 # This file demonstrates ALL available configuration options for self-instruct generation
 # Copy this file and customize it for your needs
-# Usage: dataset-builder run examples/self_instruct_complete.yaml
+# Usage: tome-raider run examples/self_instruct_complete.yaml
 
 # ==============================================================================
 # PIPELINE METADATA

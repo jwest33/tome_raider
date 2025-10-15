@@ -7,13 +7,13 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="grpo-dataset-builder",
+    name="grpo-tome-raider",
     version="0.1.0",
     author="jwest33",
     description="A comprehensive dataset builder for GRPO LoRA fine-tuning",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/jwest33/grpo-dataset-builder",
+    url="https://github.com/jwest33/grpo-tome-raider",
     packages=find_packages(exclude=["tests", "tests.*", "docs", "examples"]),
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -45,12 +45,12 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "dataset-builder=cli.main:cli",
+            "tome-raider=cli.main:cli",
         ],
     },
     include_package_data=True,
     package_data={
-        "dataset_builder": [
+        "tome_raider": [
             "generation/templates/*.yaml",
         ],
         "": ["configs/*.yaml", "templates/*.yaml"],

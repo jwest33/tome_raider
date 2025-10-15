@@ -27,7 +27,7 @@ class BaseScraper(DataSource, ABC):
         self.max_retries = config.get("max_retries", 3)
         self.timeout = config.get("timeout", 30)
         self.respect_robots_txt = config.get("respect_robots_txt", True)
-        self.user_agent = config.get("user_agent", "GRPO-Dataset-Builder/0.1.0")
+        self.user_agent = config.get("user_agent", "GRPO-tome-raider/0.1.0")
 
         self.last_request_time = 0
         self.session = self._create_session()

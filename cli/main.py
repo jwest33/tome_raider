@@ -1,4 +1,4 @@
-"""Main CLI entry point for dataset-builder."""
+"""Main CLI entry point for tome-raider."""
 
 import click
 from rich.console import Console
@@ -6,10 +6,10 @@ from rich.table import Table
 from loguru import logger
 import sys
 
-from dataset_builder.core.config import ConfigManager
-from dataset_builder.core.logging_config import setup_logging
-from dataset_builder.core.pipeline import DatasetPipeline
-from dataset_builder.storage.dataset_store import DatasetStore
+from tome_raider.core.config import ConfigManager
+from tome_raider.core.logging_config import setup_logging
+from tome_raider.core.pipeline import DatasetPipeline
+from tome_raider.storage.dataset_store import DatasetStore
 
 console = Console()
 
@@ -164,7 +164,7 @@ def generate():
 @click.pass_context
 def generate_self_instruct(ctx, model, count, output):
     """Generate using self-instruct strategy."""
-    from dataset_builder.generation.generator import DataGenerator
+    from tome_raider.generation.generator import DataGenerator
 
     console.print(f"[cyan]Generating {count} samples with self-instruct...[/cyan]")
 
@@ -206,7 +206,7 @@ def validate():
 @click.pass_context
 def validate_check(ctx, dataset_name, strict):
     """Validate a dataset."""
-    from dataset_builder.quality.validator import DatasetValidator
+    from tome_raider.quality.validator import DatasetValidator
 
     console.print(f"[cyan]Validating dataset: {dataset_name}[/cyan]")
 
@@ -248,7 +248,7 @@ def quality():
 @click.pass_context
 def quality_score(ctx, dataset_name, save):
     """Score dataset quality."""
-    from dataset_builder.quality.quality_scorer import QualityScorer
+    from tome_raider.quality.quality_scorer import QualityScorer
 
     console.print(f"[cyan]Scoring quality for: {dataset_name}[/cyan]")
 
