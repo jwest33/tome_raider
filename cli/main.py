@@ -236,6 +236,121 @@ def validate_check(ctx, dataset_name, strict):
         sys.exit(1)
 
 
+@validate.command("repair")
+@click.argument("dataset_name")
+@click.option("--strategy", "-s", default="truncate",
+              type=click.Choice(["truncate", "summarize", "split"]),
+              help="Repair strategy")
+@click.option("--model", "-m", help="Path to model file (required for summarize strategy)")
+@click.option("--output", "-o", help="Output dataset name (default: overwrites original)")
+@click.option("--backup/--no-backup", default=True, help="Create backup before repairing")
+@click.option("--dry-run", is_flag=True, help="Preview repairs without saving")
+@click.pass_context
+def validate_repair(ctx, dataset_name, strategy, model, output, backup, dry_run):
+    """Repair a dataset with validation errors."""
+    from tome_raider.quality.repairer import DatasetRepairer
+    from tome_raider.quality.validator import DatasetValidator
+
+    console.print(f"[cyan]Repairing dataset: {dataset_name}[/cyan]")
+    console.print(f"Strategy: {strategy}")
+
+    # Validate model requirement for summarize strategy
+    if strategy == "summarize" and not model:
+        console.print("[red]Error: --model is required for summarize strategy[/red]")
+        console.print("Example: tome-raider validate repair dataset_name --strategy summarize --model path/to/model.gguf")
+        sys.exit(1)
+
+    try:
+        config = ctx.obj["config"]
+        store = DatasetStore(config.get("storage.base_path", "./datasets"))
+        dataset = store.load(dataset_name)
+
+        # Create repairer
+        validator = DatasetValidator(config.get("validation", {}))
+
+        # Add model path to config for summarize strategy
+        repair_config = config.to_dict()
+        if strategy == "summarize":
+            if "repair" not in repair_config:
+                repair_config["repair"] = {}
+            repair_config["repair"]["model_path"] = model
+            console.print(f"Using model: {model}")
+
+        repairer = DatasetRepairer(
+            validator=validator,
+            strategy=strategy,
+            config=repair_config
+        )
+
+        # Repair and validate
+        console.print("\n[yellow]Analyzing dataset...[/yellow]")
+        result = repairer.repair_and_validate(dataset)
+
+        # Show before/after statistics
+        before = result["before_validation"]
+        after = result["after_validation"]
+        repair_stats = result["repair_statistics"]
+
+        console.print("\n[cyan]Before Repair:[/cyan]")
+        console.print(f"  Valid: {before['valid']}/{before['total']}")
+        console.print(f"  Invalid: {before['invalid']}/{before['total']}")
+
+        console.print("\n[cyan]After Repair:[/cyan]")
+        console.print(f"  Valid: {after['valid']}/{after['total']}")
+        console.print(f"  Invalid: {after['invalid']}/{after['total']}")
+
+        console.print(f"\n[green]Improvement:[/green]")
+        console.print(f"  Fixed: {result['improvement']['invalid_count']} samples")
+        console.print(f"  Already valid: {repair_stats['already_valid']}")
+        console.print(f"  Repaired: {repair_stats['repaired']}")
+        console.print(f"  Failed to repair: {repair_stats['failed']}")
+
+        # Show sample changes
+        if repair_stats['changes']:
+            console.print(f"\n[yellow]Sample changes (first 5):[/yellow]")
+            for change_info in repair_stats['changes'][:5]:
+                idx = change_info['sample_index']
+                changes = change_info['changes']
+                console.print(f"  Sample {idx}:")
+                for change in changes:
+                    console.print(f"    - {change}")
+
+            if len(repair_stats['changes']) > 5:
+                remaining = len(repair_stats['changes']) - 5
+                console.print(f"  ... and {remaining} more")
+
+        # Show remaining errors
+        if after['errors']:
+            console.print(f"\n[red]Remaining errors ({len(after['errors'])}):[/red]")
+            for error in after['errors'][:5]:
+                console.print(f"  - {error}")
+            if len(after['errors']) > 5:
+                console.print(f"  ... and {len(after['errors']) - 5} more")
+
+        # Save if not dry-run
+        if not dry_run:
+            # Create backup if requested
+            if backup and not output:
+                backup_name = f"{dataset_name}_backup"
+                store.save(dataset, backup_name)
+                console.print(f"\n[yellow]Backup saved as: {backup_name}[/yellow]")
+
+            # Save repaired dataset
+            output_name = output or dataset_name
+            store.save(result["dataset"], output_name)
+            console.print(f"\n[green]Repaired dataset saved as: {output_name}[/green]")
+        else:
+            console.print("\n[yellow]Dry-run mode: No changes saved[/yellow]")
+
+        # Cleanup resources (e.g., unload models)
+        repairer.cleanup()
+
+    except Exception as e:
+        console.print(f"[red]Repair failed: {e}[/red]")
+        logger.exception("Repair failed")
+        sys.exit(1)
+
+
 @cli.group()
 def quality():
     """Quality scoring and analysis."""
@@ -286,6 +401,44 @@ def quality_score(ctx, dataset_name, save):
 
     except Exception as e:
         console.print(f"[red]Scoring failed: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("dataset_name")
+@click.option("--readonly", is_flag=True, help="Open in read-only mode")
+@click.option("--validate", is_flag=True, help="Run validation automatically")
+@click.option("--filter-status", type=click.Choice(["pending", "approved", "rejected"]),
+              help="Filter by review status")
+@click.pass_context
+def review(ctx, dataset_name, readonly, validate, filter_status):
+    """Launch interactive review interface for a dataset."""
+    try:
+        config = ctx.obj["config"]
+        store = DatasetStore(config.get("storage.base_path", "./datasets"))
+
+        console.print(f"[cyan]Loading dataset: {dataset_name}[/cyan]")
+        dataset = store.load(dataset_name)
+
+        console.print(f"[green]Loaded {len(dataset)} samples[/green]")
+
+        if readonly:
+            console.print("[yellow]Read-only mode enabled[/yellow]")
+
+        # Launch TUI
+        from tome_raider.review.interactive import launch_review_ui
+
+        launch_review_ui(
+            dataset_name=dataset_name,
+            dataset=dataset,
+            store=store,
+            readonly=readonly,
+            auto_validate=validate
+        )
+
+    except Exception as e:
+        console.print(f"[red]Review failed: {e}[/red]")
+        logger.exception("Review failed")
         sys.exit(1)
 
 

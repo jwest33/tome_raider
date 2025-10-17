@@ -45,11 +45,17 @@ tome-raider generate self-instruct --model c:\models\Qwen3-4B-Instruct-2507\Qwen
 tome-raider run examples/math_dataset_pipeline.yaml
 ```
 
-### 3. Validate and Score Quality
+### 3. Validate and Repair Datasets
 
 ```bash
 # Validate dataset
 tome-raider validate check my_dataset --strict
+
+# Repair datasets with validation errors
+tome-raider validate repair my_dataset
+
+# Preview repairs without saving
+tome-raider validate repair my_dataset --dry-run
 
 # Score quality
 tome-raider quality score my_dataset --save
@@ -57,7 +63,20 @@ tome-raider quality score my_dataset --save
 
 ![validate](docs/example_dataset_validate.jpg)
 
-### 4. Manage Datasets
+### 4. Interactive Dataset Review
+
+```bash
+# Launch interactive review interface
+tome-raider review my_dataset
+
+# Open in read-only mode
+tome-raider review my_dataset --readonly
+
+# Review with auto-validation
+tome-raider review my_dataset --validate
+```
+
+### 5. Manage Datasets
 
 ```bash
 # List all datasets
@@ -159,6 +178,40 @@ validator = DatasetValidator({"strict_mode": True})
 result = validator.validate_all(samples)
 
 print(f"Valid: {result['valid']}/{result['total']}")
+```
+
+#### Repair
+
+```python
+from tome_raider.quality.repairer import DatasetRepairer
+from tome_raider.quality.validator import DatasetValidator
+
+# Option 1: Fast truncation (default)
+validator = DatasetValidator()
+repairer = DatasetRepairer(validator=validator, strategy="truncate")
+
+# Repair dataset
+result = repairer.repair_and_validate(samples)
+repaired_samples = result["dataset"]
+
+print(f"Fixed: {result['improvement']['invalid_count']} samples")
+print(f"Valid after repair: {result['after_validation']['valid']}")
+
+# Option 2: LLM-powered summarization (preserves semantic meaning)
+config = {
+    "repair": {
+        "model_path": "path/to/model.gguf"
+    }
+}
+
+repairer = DatasetRepairer(
+    validator=validator,
+    strategy="summarize",
+    config=config
+)
+
+result = repairer.repair_and_validate(samples)
+repairer.cleanup()  # Unload model
 ```
 
 #### Quality Scoring
@@ -273,12 +326,222 @@ tome-raider run my_pipeline.yaml
 
 ### Validation
 - `validate check <dataset>` - Validate dataset
+- `validate repair <dataset>` - Repair dataset validation errors
+  - `--strategy <truncate|summarize|split>` - Choose repair strategy
+  - `--model <path>` - Model path (required for summarize strategy)
+  - `--dry-run` - Preview repairs without saving
+  - `--output <name>` - Save to new dataset
+  - `--no-backup` - Skip automatic backup
 
 ### Quality
 - `quality score <dataset>` - Score dataset quality
 
+### Review
+- `review <dataset>` - Launch interactive review interface
+  - `--readonly` - Open in read-only mode
+  - `--validate` - Run validation automatically
+  - `--filter-status <status>` - Filter by review status
+
 ### Pipeline
 - `run <config>` - Run pipeline from config file
+
+## Interactive Dataset Review
+
+Tome Raider provides a powerful terminal-based GUI for manually reviewing, editing, and curating datasets.
+
+### Features
+
+- **Interactive Table View**: Browse all samples with sortable columns
+- **Detail View Modal**: View and edit full instruction/response text
+- **Quick Actions**: Keyboard shortcuts for fast review workflow
+- **Real-time Stats**: Live statistics on approval/rejection/quality
+- **Inline Editing**: Multi-line text editing with syntax highlighting
+- **Bulk Operations**: Select and process multiple samples at once
+- **Auto-validation**: Optional validation as you review
+- **Auto-save**: Changes saved on Ctrl+S
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Open detail view modal (full-screen edit) |
+| `p` | Toggle preview panel (quick view below table) |
+| `a` | Approve current sample |
+| `r` | Reject current sample |
+| `d` | Delete current sample |
+| `e` | Edit current sample |
+| `s` | Set quality score |
+| `t` | Add/remove tags |
+| `f` | Filter by status/tags |
+| `/` | Search samples |
+| `v` | Run validation |
+| `Ctrl+S` | Save changes |
+| `Ctrl+Q` | Quit |
+| `↑/↓` | Navigate samples |
+| `PageUp/PageDown` | Scroll in detail/preview |
+| `Home/End` | Jump to start/end |
+
+### Usage
+
+```bash
+# Launch interactive review
+tome-raider review example_001
+
+# Read-only mode (browse without editing)
+tome-raider review example_001 --readonly
+
+# Auto-validate as you review
+tome-raider review example_001 --validate
+
+# Filter by status
+tome-raider review example_001 --filter-status pending
+```
+
+### UI Overview
+
+```
+┌─ Tome Raider - Dataset Review ──────────────────────────────┐
+│ Dataset: example_001                                         │
+├──────────────────────────────────────────────────────────────┤
+│ ID │ Instruction       │ Response   │ Score │ Status  │ Tags│
+├────┼───────────────────┼────────────┼───────┼─────────┼─────┤
+│ 0  │ Write a Python... │ Here's...  │ 0.85  │ ✓ Appr. │ py  │
+│ 1  │ Explain how...    │ The pro... │ 0.72  │ ⏸ Pend. │     │
+│ 2  │ Create a func...  │ ```pyth... │ 0.91  │ ✓ Appr. │ py  │
+│ 3  │ Debug this...     │ The bug... │ -     │ ✗ Rej.  │     │
+│ >  │ (Selected row - press Enter to view details)            │
+├──────────────────────────────────────────────────────────────┤
+│ Total: 50 | ✓ Approved: 14 | ✗ Rejected: 10 | ⏸ Pending: 26│
+│ Avg Quality: 0.82 | Valid: 48/50                             │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Two Ways to View Full Text
+
+**1. Preview Panel (Quick View)**
+- Press `p` to toggle a preview panel below the table
+- Shows full instruction and response text for selected row
+- Navigate with arrow keys - preview updates automatically
+- Perfect for quick browsing without opening modals
+- Includes word count, line count, and character count
+- Scrollable with PageUp/PageDown
+
+**2. Detail View Modal (Full-Screen Edit)**
+- Press `Enter` to open a full-screen modal
+- Multi-line text editing with syntax highlighting
+- Word wrapping for long lines
+- Line numbers shown
+- Scroll with arrow keys, PageUp/PageDown, Home/End
+- Quick approve/reject buttons
+- Real-time character/word/line counts
+
+### Review Workflow
+
+1. **Browse**: Navigate table with arrow keys
+2. **Quick Preview**: Press `p` to see full text in preview panel below table
+3. **Quick Actions**: Use `a` to approve, `r` to reject without opening detail view
+4. **Detailed Review**: Press `Enter` for samples needing closer inspection or editing
+5. **Edit**: Modify instruction/response text in detail view modal
+6. **Save**: Press `Ctrl+S` to save all changes
+7. **Filter**: Use `f` to focus on pending items only
+
+### Text Display Features
+
+- **Word Wrapping**: Long lines wrap automatically for readability
+- **Line Numbers**: See line numbers in detail view
+- **Statistics**: Character count, word count, and line count displayed
+- **Scrolling**: Full keyboard navigation support
+  - `↑/↓` or `j/k`: Move line by line
+  - `PageUp/PageDown`: Jump by page
+  - `Home/End`: Jump to start/end
+  - Mouse wheel scrolling supported
+
+## Dataset Repair
+
+Tome Raider can automatically repair datasets with validation errors using intelligent strategies:
+
+### Repair Strategies
+
+1. **Truncate** (default): Smart truncation at sentence boundaries
+   - Preserves sentence completeness
+   - Maintains context and readability
+   - Falls back to paragraph/word boundaries if needed
+   - Fast, no model required
+   - **Limitation**: Semantically arbitrary - may cut important context
+
+2. **Summarize**: LLM-powered intelligent condensing
+   - Uses an LLM to preserve semantic meaning while shortening
+   - Maintains all key requirements, constraints, and intent
+   - Preserves instruction-response validity
+   - Requires model file (GGUF format)
+   - Slower but semantically accurate
+   - Falls back to truncation if LLM fails
+
+3. **Split**: Divide long samples into multiple shorter samples
+   - Preserves all content
+   - Creates multiple valid samples
+
+### Usage Examples
+
+```bash
+# Quick repair with truncation (default)
+tome-raider validate repair example_001
+
+# Preview repairs without making changes
+tome-raider validate repair example_001 --dry-run
+
+# Use LLM-powered summarization (preserves semantic meaning)
+tome-raider validate repair example_001 --strategy summarize --model path/to/model.gguf
+
+# With specific model
+tome-raider validate repair example_001 --strategy summarize \
+  --model "C:\models\Qwen3-4B-Instruct-Q8_0.gguf"
+
+# Repair and save to new dataset (keeps original)
+tome-raider validate repair example_001 --output example_001_fixed
+
+# Repair without backup
+tome-raider validate repair example_001 --no-backup
+
+# Use split strategy
+tome-raider validate repair example_001 --strategy split
+```
+
+### What Gets Fixed
+
+The repair system automatically fixes:
+- **Instructions too long**: Condensed to max length (5000 chars by default)
+- **Responses too long**: Condensed to max length (10000 chars by default)
+
+**Repair Methods:**
+- **Truncate**: Smart multi-tier approach (sentence → paragraph → word boundaries)
+- **Summarize**: LLM intelligently condenses while preserving all key requirements
+- **Split**: Divides into multiple valid samples
+
+### Repair Output
+
+The repair command shows:
+- Before/after validation statistics
+- Number of samples fixed
+- Sample-by-sample changes
+- Remaining errors (if any)
+
+Example output:
+```
+Before Repair:
+  Valid: 14/50
+  Invalid: 36/50
+
+After Repair:
+  Valid: 50/50
+  Invalid: 0/50
+
+Improvement:
+  Fixed: 36 samples
+  Already valid: 14
+  Repaired: 36
+  Failed to repair: 0
+```
 
 ## Generation Strategies
 
