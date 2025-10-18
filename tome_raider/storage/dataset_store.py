@@ -190,8 +190,11 @@ class DatasetStore:
         info = self.index[name]
         format = info["format"]
 
-        # Save with same format
-        self.save(dataset, name, format)
+        # Preserve existing custom_metadata when updating
+        existing_custom_metadata = info.get("custom_metadata", {})
+
+        # Save with same format and preserved metadata
+        self.save(dataset, name, format, metadata=existing_custom_metadata)
 
     def _compute_metadata(self, dataset: List[Sample]) -> Dict[str, Any]:
         """Compute dataset metadata."""

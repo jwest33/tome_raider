@@ -194,6 +194,122 @@ def generate_self_instruct(ctx, model, count, output):
         sys.exit(1)
 
 
+@generate.command("temporal-facts")
+@click.option("--model", "-m", required=True, help="Path to LLM model file (.gguf)")
+@click.option("--num-groups", "-n", default=20, help="Number of fact groups to generate")
+@click.option("--variations", "-v", default=7, help="Number of variations per fact group")
+@click.option("--start-date", default="2024-01-01", help="Start date (YYYY-MM-DD)")
+@click.option("--end-date", default="2024-01-31", help="End date (YYYY-MM-DD)")
+@click.option("--frequency", default="hourly",
+              type=click.Choice(["hourly", "daily", "minutes"]),
+              help="Time frequency for variations")
+@click.option("--domain", "-d", default="news",
+              type=click.Choice(["news", "business", "science", "sports", "social", "entertainment", "technology"]),
+              help="Domain for factual statements")
+@click.option("--temperature", default=0.8, type=float,
+              help="LLM sampling temperature (0.0-2.0)")
+@click.option("--name", help="Dataset name (auto-generated if not provided)")
+@click.pass_context
+def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
+                            end_date, frequency, domain, temperature, name):
+    """Generate temporal factual statements for embedding experiments.
+
+    This generates groups of similar facts with different timestamps,
+    perfect for testing if embeddings can retrieve information in the
+    correct temporal order. Generated datasets are saved to the dataset
+    store and automatically indexed.
+
+    Example:
+        tome-raider generate temporal-facts \\
+            --model models/llama-7b.gguf \\
+            --num-groups 20 \\
+            --variations 7 \\
+            --domain business \\
+            --name "business_facts_jan2024"
+    """
+    from tome_raider.generation.temporal_fact_generator import (
+        generate_temporal_facts,
+        save_to_dataset_store
+    )
+    from datetime import datetime as dt
+
+    # Auto-generate dataset name if not provided
+    if not name:
+        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+        name = f"temporal_facts_{domain}_{timestamp}"
+
+    console.print(f"[cyan]Generating {num_groups} fact groups with {variations} variations each[/cyan]")
+    console.print(f"Dataset name: {name}")
+    console.print(f"Date range: {start_date} to {end_date}")
+    console.print(f"Frequency: {frequency}")
+    console.print(f"Domain: {domain}")
+    console.print(f"Model: {model}\n")
+
+    try:
+        config = ctx.obj["config"]
+        store_path = config.get("storage.base_path", "./datasets")
+
+        # Generate temporal facts
+        with console.status("[bold green]Generating facts with LLM...") as status:
+            facts = generate_temporal_facts(
+                model_path=model,
+                num_fact_groups=num_groups,
+                variations_per_group=variations,
+                start_date=start_date,
+                end_date=end_date,
+                frequency=frequency,
+                fact_domain=domain,
+                temperature=temperature
+            )
+
+        console.print(f"[green]Generated {len(facts)} total facts[/green]")
+
+        # Prepare generation parameters for metadata
+        generation_params = {
+            "model_path": model,
+            "num_groups": num_groups,
+            "variations_per_group": variations,
+            "start_date": start_date,
+            "end_date": end_date,
+            "frequency": frequency,
+            "domain": domain,
+            "temperature": temperature,
+        }
+
+        # Save to dataset store
+        filepath = save_to_dataset_store(
+            facts=facts,
+            dataset_name=name,
+            store_path=store_path,
+            generation_params=generation_params
+        )
+        console.print(f"[green]Saved to dataset store: {name}[/green]")
+        console.print(f"[green]File: {filepath}[/green]")
+
+        # Show sample facts from first group
+        console.print("\n[yellow]Sample facts from first group:[/yellow]")
+        if facts:
+            first_group_facts = [f for f in facts if f['group_id'] == facts[0]['group_id']]
+            for fact in first_group_facts[:5]:
+                fact_text = fact['fact'][:80] + "..." if len(fact['fact']) > 80 else fact['fact']
+                console.print(f"  [{fact['timestamp']}] {fact_text}")
+
+        # Show statistics
+        groups = set(f['group_id'] for f in facts)
+        console.print(f"\n[cyan]Statistics:[/cyan]")
+        console.print(f"  Total fact groups: {len(groups)}")
+        console.print(f"  Total facts: {len(facts)}")
+        console.print(f"  Avg facts per group: {len(facts) / len(groups):.1f}")
+
+        console.print(f"\n[cyan]View dataset:[/cyan]")
+        console.print(f"  tome-raider dataset info {name}")
+
+    except Exception as e:
+        console.print(f"[red]Generation failed: {e}[/red]")
+        logger.exception("Temporal fact generation failed")
+        sys.exit(1)
+
+
 @cli.group()
 def validate():
     """Validate datasets."""
@@ -203,10 +319,13 @@ def validate():
 @validate.command("check")
 @click.argument("dataset_name")
 @click.option("--strict", is_flag=True, help="Strict validation mode")
+@click.option("--dataset-type", type=click.Choice(["auto", "grpo", "temporal-facts"]),
+              default="auto", help="Dataset type (auto-detects by default)")
 @click.pass_context
-def validate_check(ctx, dataset_name, strict):
+def validate_check(ctx, dataset_name, strict, dataset_type):
     """Validate a dataset."""
     from tome_raider.quality.validator import DatasetValidator
+    from tome_raider.quality.temporal_fact_validator import TemporalFactValidator
 
     console.print(f"[cyan]Validating dataset: {dataset_name}[/cyan]")
 
@@ -215,15 +334,61 @@ def validate_check(ctx, dataset_name, strict):
         store = DatasetStore(config.get("storage.base_path", "./datasets"))
         dataset = store.load(dataset_name)
 
-        validator = DatasetValidator(config.get("validation", {}))
+        # Get dataset metadata for type detection
+        dataset_info = store.index.get(dataset_name, {})
+        dataset_metadata = dataset_info.get("metadata", {})
+        custom_metadata = dataset_info.get("custom_metadata", {})
+
+        # Auto-detect dataset type (check custom_metadata first, then metadata)
+        if dataset_type == "auto":
+            detected_type = custom_metadata.get("type") or dataset_metadata.get("type", "grpo")
+            console.print(f"[yellow]Auto-detected type: {detected_type}[/yellow]")
+        else:
+            detected_type = "temporal_facts" if dataset_type == "temporal-facts" else "grpo"
+
+        # Choose appropriate validator
+        if detected_type == "temporal_facts":
+            validator = TemporalFactValidator(config.get("validation", {}))
+            console.print("[yellow]Using Temporal Fact Validator[/yellow]\n")
+        else:
+            validator = DatasetValidator(config.get("validation", {}))
+            console.print("[yellow]Using GRPO Dataset Validator[/yellow]\n")
+
+        # Run validation
         result = validator.validate_all(dataset)
 
-        # Show results
-        console.print(f"\nTotal samples: {result['total']}")
-        console.print(f"[green]Valid: {result['valid']}[/green]")
-        console.print(f"[red]Invalid: {result['invalid']}[/red]")
+        # Show results based on validator type
+        if detected_type == "temporal_facts":
+            # Temporal facts specific output
+            console.print(f"[cyan]Dataset Type:[/cyan] Temporal Facts")
+            console.print(f"Total facts: {result['total']}")
+            console.print(f"[green]Valid: {result['valid']}[/green]")
+            console.print(f"[red]Invalid: {result['invalid']}[/red]")
+            console.print(f"Groups: {result.get('group_count', 'N/A')}")
 
-        if result['errors']:
+            # Show statistics if available
+            if hasattr(validator, 'get_statistics'):
+                stats = validator.get_statistics(dataset)
+                if stats:
+                    console.print("\n[cyan]Statistics:[/cyan]")
+                    console.print(f"  Num groups: {stats.get('num_groups', 'N/A')}")
+                    console.print(f"  Avg facts/group: {stats.get('avg_facts_per_group', 'N/A')}")
+
+                    date_range = stats.get('date_range')
+                    if date_range:
+                        console.print(f"  Date range: {date_range['start'][:10]} to {date_range['end'][:10]}")
+                        console.print(f"  Span: {date_range['days']} days")
+
+                    if 'detected_frequency' in stats:
+                        console.print(f"  Frequency: {stats['detected_frequency']}")
+        else:
+            # GRPO dataset output
+            console.print(f"Total samples: {result['total']}")
+            console.print(f"[green]Valid: {result['valid']}[/green]")
+            console.print(f"[red]Invalid: {result['invalid']}[/red]")
+
+        # Show errors
+        if result.get('errors'):
             console.print(f"\n[red]Errors ({len(result['errors'])}):[/red]")
             for error in result['errors'][:10]:  # Show first 10
                 console.print(f"  - {error}")
@@ -231,8 +396,18 @@ def validate_check(ctx, dataset_name, strict):
             if len(result['errors']) > 10:
                 console.print(f"  ... and {len(result['errors']) - 10} more")
 
+        # Show warnings
+        if result.get('warnings'):
+            console.print(f"\n[yellow]Warnings ({len(result['warnings'])}):[/yellow]")
+            for warning in result['warnings'][:10]:  # Show first 10
+                console.print(f"  - {warning}")
+
+            if len(result['warnings']) > 10:
+                console.print(f"  ... and {len(result['warnings']) - 10} more")
+
     except Exception as e:
         console.print(f"[red]Validation failed: {e}[/red]")
+        logger.exception("Validation failed")
         sys.exit(1)
 
 
@@ -245,11 +420,14 @@ def validate_check(ctx, dataset_name, strict):
 @click.option("--output", "-o", help="Output dataset name (default: overwrites original)")
 @click.option("--backup/--no-backup", default=True, help="Create backup before repairing")
 @click.option("--dry-run", is_flag=True, help="Preview repairs without saving")
+@click.option("--dataset-type", type=click.Choice(["auto", "grpo", "temporal-facts"]),
+              default="auto", help="Dataset type (auto-detects by default)")
 @click.pass_context
-def validate_repair(ctx, dataset_name, strategy, model, output, backup, dry_run):
+def validate_repair(ctx, dataset_name, strategy, model, output, backup, dry_run, dataset_type):
     """Repair a dataset with validation errors."""
     from tome_raider.quality.repairer import DatasetRepairer
     from tome_raider.quality.validator import DatasetValidator
+    from tome_raider.quality.temporal_fact_validator import TemporalFactValidator
 
     console.print(f"[cyan]Repairing dataset: {dataset_name}[/cyan]")
     console.print(f"Strategy: {strategy}")
@@ -265,8 +443,27 @@ def validate_repair(ctx, dataset_name, strategy, model, output, backup, dry_run)
         store = DatasetStore(config.get("storage.base_path", "./datasets"))
         dataset = store.load(dataset_name)
 
-        # Create repairer
-        validator = DatasetValidator(config.get("validation", {}))
+        # Get dataset metadata for type detection
+        dataset_info = store.index.get(dataset_name, {})
+        dataset_metadata = dataset_info.get("metadata", {})
+        custom_metadata = dataset_info.get("custom_metadata", {})
+
+        # Auto-detect dataset type (check custom_metadata first, then metadata)
+        if dataset_type == "auto":
+            detected_type = custom_metadata.get("type") or dataset_metadata.get("type", "grpo")
+            console.print(f"[yellow]Auto-detected type: {detected_type}[/yellow]")
+        else:
+            detected_type = "temporal_facts" if dataset_type == "temporal-facts" else "grpo"
+
+        # Choose appropriate validator
+        if detected_type == "temporal_facts":
+            validator = TemporalFactValidator(config.get("validation", {}))
+            console.print("[yellow]Using Temporal Fact Validator[/yellow]\n")
+        else:
+            validator = DatasetValidator(config.get("validation", {}))
+            console.print("[yellow]Using GRPO Dataset Validator[/yellow]\n")
+
+        # Create repairer with appropriate validator
 
         # Add model path to config for summarize strategy
         repair_config = config.to_dict()
@@ -332,12 +529,12 @@ def validate_repair(ctx, dataset_name, strategy, model, output, backup, dry_run)
             # Create backup if requested
             if backup and not output:
                 backup_name = f"{dataset_name}_backup"
-                store.save(dataset, backup_name)
+                store.save(dataset, backup_name, metadata=custom_metadata)
                 console.print(f"\n[yellow]Backup saved as: {backup_name}[/yellow]")
 
-            # Save repaired dataset
+            # Save repaired dataset with preserved custom_metadata
             output_name = output or dataset_name
-            store.save(result["dataset"], output_name)
+            store.save(result["dataset"], output_name, metadata=custom_metadata)
             console.print(f"\n[green]Repaired dataset saved as: {output_name}[/green]")
         else:
             console.print("\n[yellow]Dry-run mode: No changes saved[/yellow]")

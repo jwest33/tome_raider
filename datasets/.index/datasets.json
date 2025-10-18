@@ -74,5 +74,280 @@
       }
     },
     "custom_metadata": {}
+  },
+  "temporal_facts_social_20251018_045910": {
+    "path": "datasets\\temporal_facts_social_20251018_045910.jsonl",
+    "format": "jsonl",
+    "sample_count": 105,
+    "created_at": "2025-10-18T05:00:49.891358",
+    "updated_at": "2025-10-18T05:00:49.891358",
+    "metadata": {
+      "source_types": {
+        "generated_temporal_facts": 105
+      },
+      "tags": {
+        "temporal": 105,
+        "embedding-experiment": 105,
+        "group_002": 7,
+        "group_003": 7,
+        "group_004": 7,
+        "group_006": 7,
+        "group_007": 7,
+        "group_008": 7,
+        "group_009": 7,
+        "group_010": 7,
+        "group_012": 7,
+        "group_013": 7,
+        "group_014": 7,
+        "group_016": 7,
+        "group_018": 7,
+        "group_019": 7,
+        "group_020": 7
+      },
+      "review_statuses": {
+        "pending": 105
+      }
+    },
+    "custom_metadata": {
+      "type": "temporal_facts",
+      "total_facts": 105,
+      "num_groups": 15,
+      "generation_timestamp": "2025-10-18T05:00:49.888856",
+      "generation_params": {
+        "model_path": "C:\\models\\Qwen3-4B-Instruct-2507\\Qwen3-4B-Instruct-2507-Q8_0.gguf",
+        "num_groups": 20,
+        "variations_per_group": 7,
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-31",
+        "frequency": "hourly",
+        "domain": "social",
+        "temperature": 0.8
+      },
+      "temporal_stats": {
+        "start_date": "2024-01-02T12:00:00",
+        "end_date": "2024-01-29T18:00:00",
+        "date_range_days": 27
+      }
+    }
+  },
+  "temporal_facts_social_20251018_050718": {
+    "path": "datasets\\temporal_facts_social_20251018_050718.jsonl",
+    "format": "jsonl",
+    "sample_count": 175,
+    "created_at": "2025-10-18T05:46:43.365025",
+    "updated_at": "2025-10-18T05:46:43.365025",
+    "metadata": {
+      "source_types": {
+        "generated_temporal_facts": 175
+      },
+      "tags": {
+        "temporal": 175,
+        "embedding-experiment": 175,
+        "group_001": 7,
+        "group_002": 7,
+        "group_003": 7,
+        "group_004": 7,
+        "group_005": 7,
+        "group_006": 7,
+        "group_007": 7,
+        "group_008": 7,
+        "group_009": 7,
+        "group_010": 7,
+        "group_011": 7,
+        "group_012": 7,
+        "group_013": 7,
+        "group_014": 7,
+        "group_015": 7,
+        "group_016": 7,
+        "group_017": 7,
+        "group_018": 7,
+        "group_019": 7,
+        "group_020": 7,
+        "group_021": 7,
+        "group_022": 7,
+        "group_023": 7,
+        "group_024": 7,
+        "group_025": 7
+      },
+      "review_statuses": {
+        "pending": 175
+      }
+    },
+    "custom_metadata": {}
+  },
+  "temporal_facts_social_20251018_050718_backup": {
+    "path": "datasets\\temporal_facts_social_20251018_050718_backup.jsonl",
+    "format": "jsonl",
+    "sample_count": 175,
+    "created_at": "2025-10-18T05:46:43.361522",
+    "updated_at": "2025-10-18T05:46:43.361522",
+    "metadata": {
+      "source_types": {
+        "generated_temporal_facts": 175
+      },
+      "tags": {
+        "temporal": 175,
+        "embedding-experiment": 175,
+        "group_001": 7,
+        "group_002": 7,
+        "group_003": 7,
+        "group_004": 7,
+        "group_005": 7,
+        "group_006": 7,
+        "group_007": 7,
+        "group_008": 7,
+        "group_009": 7,
+        "group_010": 7,
+        "group_011": 7,
+        "group_012": 7,
+        "group_013": 7,
+        "group_014": 7,
+        "group_015": 7,
+        "group_016": 7,
+        "group_017": 7,
+        "group_018": 7,
+        "group_019": 7,
+        "group_020": 7,
+        "group_021": 7,
+        "group_022": 7,
+        "group_023": 7,
+        "group_024": 7,
+        "group_025": 7
+      },
+      "review_statuses": {
+        "pending": 175
+      }
+    },
+    "custom_metadata": {}
+  },
+  "temporal_facts_social_20251018_055003": {
+    "path": "datasets\\temporal_facts_social_20251018_055003.jsonl",
+    "format": "jsonl",
+    "sample_count": 175,
+    "created_at": "2025-10-18T06:03:58.557482",
+    "updated_at": "2025-10-18T06:03:58.557482",
+    "metadata": {
+      "source_types": {
+        "generated_temporal_facts": 175
+      },
+      "tags": {
+        "temporal": 175,
+        "embedding-experiment": 175,
+        "group_001": 7,
+        "group_002": 7,
+        "group_003": 7,
+        "group_004": 7,
+        "group_005": 7,
+        "group_006": 7,
+        "group_007": 7,
+        "group_008": 7,
+        "group_009": 7,
+        "group_010": 7,
+        "group_011": 7,
+        "group_012": 7,
+        "group_013": 7,
+        "group_014": 7,
+        "group_015": 7,
+        "group_016": 7,
+        "group_017": 7,
+        "group_018": 7,
+        "group_019": 7,
+        "group_020": 7,
+        "group_021": 7,
+        "group_022": 7,
+        "group_023": 7,
+        "group_024": 7,
+        "group_025": 7
+      },
+      "review_statuses": {
+        "pending": 175
+      }
+    },
+    "custom_metadata": {
+      "type": "temporal_facts",
+      "total_facts": 175,
+      "num_groups": 25,
+      "generation_timestamp": "2025-10-18T05:54:07.509569",
+      "generation_params": {
+        "model_path": "C:\\models\\Qwen3-4B-Instruct-2507\\Qwen3-4B-Instruct-2507-Q8_0.gguf",
+        "num_groups": 25,
+        "variations_per_group": 7,
+        "start_date": "2025-01-01",
+        "end_date": "2025-09-30",
+        "frequency": "hourly",
+        "domain": "social",
+        "temperature": 0.8
+      },
+      "temporal_stats": {
+        "start_date": "2025-01-01T00:00:00",
+        "end_date": "2025-09-19T08:52:48",
+        "date_range_days": 261
+      }
+    }
+  },
+  "temporal_facts_social_20251018_055003_backup": {
+    "path": "datasets\\temporal_facts_social_20251018_055003_backup.jsonl",
+    "format": "jsonl",
+    "sample_count": 175,
+    "created_at": "2025-10-18T06:03:58.553974",
+    "updated_at": "2025-10-18T06:03:58.553974",
+    "metadata": {
+      "source_types": {
+        "generated_temporal_facts": 175
+      },
+      "tags": {
+        "temporal": 175,
+        "embedding-experiment": 175,
+        "group_001": 7,
+        "group_002": 7,
+        "group_003": 7,
+        "group_004": 7,
+        "group_005": 7,
+        "group_006": 7,
+        "group_007": 7,
+        "group_008": 7,
+        "group_009": 7,
+        "group_010": 7,
+        "group_011": 7,
+        "group_012": 7,
+        "group_013": 7,
+        "group_014": 7,
+        "group_015": 7,
+        "group_016": 7,
+        "group_017": 7,
+        "group_018": 7,
+        "group_019": 7,
+        "group_020": 7,
+        "group_021": 7,
+        "group_022": 7,
+        "group_023": 7,
+        "group_024": 7,
+        "group_025": 7
+      },
+      "review_statuses": {
+        "pending": 175
+      }
+    },
+    "custom_metadata": {
+      "type": "temporal_facts",
+      "total_facts": 175,
+      "num_groups": 25,
+      "generation_timestamp": "2025-10-18T05:54:07.509569",
+      "generation_params": {
+        "model_path": "C:\\models\\Qwen3-4B-Instruct-2507\\Qwen3-4B-Instruct-2507-Q8_0.gguf",
+        "num_groups": 25,
+        "variations_per_group": 7,
+        "start_date": "2025-01-01",
+        "end_date": "2025-09-30",
+        "frequency": "hourly",
+        "domain": "social",
+        "temperature": 0.8
+      },
+      "temporal_stats": {
+        "start_date": "2025-01-01T00:00:00",
+        "end_date": "2025-09-19T08:52:48",
+        "date_range_days": 261
+      }
+    }
   }
 }

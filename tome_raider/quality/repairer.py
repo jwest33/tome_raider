@@ -304,6 +304,158 @@ Condensed response:"""
             self.llm_manager = None
 
 
+class TemporalFactRewriteStrategy(RepairStrategy):
+    """Use LLM to rewrite temporal facts more concisely while preserving exact details."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize temporal fact rewrite strategy."""
+        super().__init__(config)
+        self.max_instruction_length = self.config.get("max_instruction_length", 500)
+        self.model_path = self.config.get("model_path")
+        self.llm_manager = None
+
+        if not self.model_path:
+            raise ValueError("model_path is required for TemporalFactRewriteStrategy")
+
+    def _ensure_model_loaded(self):
+        """Ensure LLM model is loaded."""
+        if self.llm_manager is None:
+            from ..generation.llm_manager import LlamaServerManager
+
+            logger.info(f"Loading model for temporal fact rewriting: {self.model_path}")
+            self.llm_manager = LlamaServerManager()
+
+            success = self.llm_manager.load_model(
+                model_path=self.model_path,
+                context_size=4096,
+                n_gpu_layers=-1  # Use GPU if available
+            )
+
+            if not success:
+                raise RuntimeError(f"Failed to load model: {self.model_path}")
+
+    def _rewrite_fact(self, fact: str, max_length: int) -> str:
+        """
+        Use LLM to rewrite a temporal fact more concisely.
+
+        Args:
+            fact: Temporal fact to rewrite
+            max_length: Maximum character length
+
+        Returns:
+            Rewritten fact
+        """
+        self._ensure_model_loaded()
+
+        # Calculate target length (aim for 90% of max to leave margin)
+        target_length = int(max_length * 0.9)
+
+        prompt = f"""Rewrite the following factual statement to be more concise while preserving ALL exact details.
+
+CRITICAL RULES:
+1. Keep ALL numbers, dates, names, and statistics EXACTLY as they appear
+2. Do NOT explain, elaborate, or add context
+3. Do NOT use phrases like "According to" or "It is reported that"
+4. Write ONE clear, direct sentence
+5. Target length: {target_length} characters or less (currently {len(fact)} characters)
+
+Example transformations:
+Original (105 chars): "According to reports, a viral TikTok dance challenge featuring 1980s-inspired choreography reached 50 million views in 72 hours."
+Rewritten (88 chars): "A TikTok dance challenge with 1980s choreography reached 50 million views in 72 hours."
+
+Original (87 chars): "The company announced that its quarterly revenue increased by 23% to $450 million."
+Rewritten (62 chars): "Quarterly revenue increased 23% to $450 million."
+
+Now rewrite this fact:
+Original ({len(fact)} chars): {fact}
+
+Rewritten:"""
+
+        logger.debug(f"Rewriting temporal fact from {len(fact)} to ~{target_length} chars")
+
+        try:
+            rewritten = self.llm_manager.generate(
+                prompt=prompt,
+                temperature=0.15,  # Very low temperature for focused, consistent output
+                max_tokens=150,  # Limit tokens to prevent rambling
+                top_p=0.85,
+                stop=["\n\n", "Original:", "Example:"]  # Stop at these sequences
+            )
+
+            if not rewritten:
+                logger.warning("LLM returned empty response, falling back to truncation")
+                truncate = TruncateStrategy(self.config)
+                return truncate._truncate_text(fact, max_length)
+
+            # Clean up the response
+            rewritten = rewritten.strip()
+
+            # Remove any explanatory text that might have been added
+            if "\n" in rewritten:
+                rewritten = rewritten.split("\n")[0].strip()
+
+            # Verify it's actually shorter
+            if len(rewritten) > max_length:
+                logger.warning(f"LLM output still too long ({len(rewritten)} > {max_length}), truncating")
+                truncate = TruncateStrategy(self.config)
+                return truncate._truncate_text(rewritten, max_length)
+
+            # Verify it's actually different and shorter
+            if len(rewritten) >= len(fact):
+                logger.warning(f"LLM output not shorter ({len(rewritten)} >= {len(fact)}), truncating original")
+                truncate = TruncateStrategy(self.config)
+                return truncate._truncate_text(fact, max_length)
+
+            return rewritten
+
+        except Exception as e:
+            logger.error(f"Fact rewriting failed: {e}, falling back to truncation")
+            truncate = TruncateStrategy(self.config)
+            return truncate._truncate_text(fact, max_length)
+
+    def repair(self, sample: Sample, validation_result: ValidationResult) -> RepairResult:
+        """Repair by using LLM to rewrite temporal fact."""
+        repaired = deepcopy(sample)
+        changes = []
+
+        try:
+            # Check if fact (instruction) needs rewriting
+            if sample.instruction and len(sample.instruction) > self.max_instruction_length:
+                original_len = len(sample.instruction)
+                repaired.instruction = self._rewrite_fact(
+                    sample.instruction,
+                    self.max_instruction_length
+                )
+                new_len = len(repaired.instruction)
+                changes.append(
+                    f"Rewrote fact from {original_len} to {new_len} chars using LLM"
+                )
+
+            return RepairResult(
+                original_sample=sample,
+                repaired_sample=repaired,
+                success=bool(changes),
+                changes=changes
+            )
+
+        except Exception as e:
+            logger.error(f"Temporal fact rewriting failed: {e}")
+            return RepairResult(
+                original_sample=sample,
+                repaired_sample=None,
+                success=False,
+                changes=[],
+                error=str(e)
+            )
+
+    def cleanup(self):
+        """Unload model and cleanup resources."""
+        if self.llm_manager:
+            logger.info("Unloading temporal fact rewrite model")
+            self.llm_manager.unload_model()
+            self.llm_manager = None
+
+
 class SplitStrategy(RepairStrategy):
     """Split long samples into multiple shorter samples."""
 
@@ -346,17 +498,32 @@ class DatasetRepairer:
         self.config = config or {}
         self.validator = validator or DatasetValidator(self.config.get("validation", {}))
 
-        # Initialize strategy
-        strategy_config = {
-            "max_instruction_length": self.validator.max_instruction_length,
-            "max_response_length": self.validator.max_response_length,
-            **self.config.get("repair", {})
-        }
+        # Initialize strategy - handle different validator types
+        from .temporal_fact_validator import TemporalFactValidator
+
+        if isinstance(self.validator, TemporalFactValidator):
+            # Temporal fact validator uses different attribute names
+            strategy_config = {
+                "max_instruction_length": self.validator.max_fact_length,
+                "max_response_length": 100000,  # Temporal facts have empty responses
+                **self.config.get("repair", {})
+            }
+        else:
+            # Standard GRPO dataset validator
+            strategy_config = {
+                "max_instruction_length": self.validator.max_instruction_length,
+                "max_response_length": self.validator.max_response_length,
+                **self.config.get("repair", {})
+            }
 
         if strategy == "truncate":
             self.strategy = TruncateStrategy(strategy_config)
         elif strategy == "summarize":
-            self.strategy = SummarizeStrategy(strategy_config)
+            # Use specialized strategy for temporal facts
+            if isinstance(self.validator, TemporalFactValidator):
+                self.strategy = TemporalFactRewriteStrategy(strategy_config)
+            else:
+                self.strategy = SummarizeStrategy(strategy_config)
         elif strategy == "split":
             self.strategy = SplitStrategy(strategy_config)
         else:
