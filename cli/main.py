@@ -208,10 +208,12 @@ def generate_self_instruct(ctx, model, count, output):
               help="Domain for factual statements")
 @click.option("--temperature", default=0.8, type=float,
               help="LLM sampling temperature (0.0-2.0)")
+@click.option("--evolution/--no-evolution", default=False,
+              help="Evolution mode: generate connected story events instead of semantic variations")
 @click.option("--name", help="Dataset name (auto-generated if not provided)")
 @click.pass_context
 def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
-                            end_date, frequency, domain, temperature, name):
+                            end_date, frequency, domain, temperature, evolution, name):
     """Generate temporal factual statements for embedding experiments.
 
     This generates groups of similar facts with different timestamps,
@@ -219,13 +221,27 @@ def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
     correct temporal order. Generated datasets are saved to the dataset
     store and automatically indexed.
 
-    Example:
+    Evolution Mode (--evolution):
+        When enabled, each group becomes a connected story rather than semantic variations.
+        Events build on each other causally, perfect for testing before/after queries and
+        causal reasoning in embeddings.
+
+    Example (standard variation mode):
         tome-raider generate temporal-facts \\
             --model models/llama-7b.gguf \\
             --num-groups 20 \\
             --variations 7 \\
             --domain business \\
             --name "business_facts_jan2024"
+
+    Example (evolution mode):
+        tome-raider generate temporal-facts \\
+            --model models/llama-7b.gguf \\
+            --num-groups 10 \\
+            --variations 5 \\
+            --domain social \\
+            --evolution \\
+            --name "social_stories_jan2024"
     """
     from tome_raider.generation.temporal_fact_generator import (
         generate_temporal_facts,
@@ -236,9 +252,11 @@ def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
     # Auto-generate dataset name if not provided
     if not name:
         timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
-        name = f"temporal_facts_{domain}_{timestamp}"
+        mode_suffix = "evolution" if evolution else "variation"
+        name = f"temporal_facts_{domain}_{mode_suffix}_{timestamp}"
 
-    console.print(f"[cyan]Generating {num_groups} fact groups with {variations} variations each[/cyan]")
+    console.print(f"[cyan]Generating {num_groups} fact groups with {variations} {'events' if evolution else 'variations'} each[/cyan]")
+    console.print(f"Mode: {'Evolution (connected story events)' if evolution else 'Variation (semantic variations)'}")
     console.print(f"Dataset name: {name}")
     console.print(f"Date range: {start_date} to {end_date}")
     console.print(f"Frequency: {frequency}")
@@ -250,7 +268,8 @@ def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
         store_path = config.get("storage.base_path", "./datasets")
 
         # Generate temporal facts
-        with console.status("[bold green]Generating facts with LLM...") as status:
+        status_text = "[bold green]Generating connected story events..." if evolution else "[bold green]Generating fact variations..."
+        with console.status(status_text) as status:
             facts = generate_temporal_facts(
                 model_path=model,
                 num_fact_groups=num_groups,
@@ -259,10 +278,11 @@ def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
                 end_date=end_date,
                 frequency=frequency,
                 fact_domain=domain,
-                temperature=temperature
+                temperature=temperature,
+                evolution_mode=evolution
             )
 
-        console.print(f"[green]Generated {len(facts)} total facts[/green]")
+        console.print(f"[green]Generated {len(facts)} total {'events' if evolution else 'facts'}[/green]")
 
         # Prepare generation parameters for metadata
         generation_params = {
@@ -274,6 +294,7 @@ def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
             "frequency": frequency,
             "domain": domain,
             "temperature": temperature,
+            "evolution_mode": evolution,
         }
 
         # Save to dataset store
@@ -281,7 +302,8 @@ def generate_temporal_facts(ctx, model, num_groups, variations, start_date,
             facts=facts,
             dataset_name=name,
             store_path=store_path,
-            generation_params=generation_params
+            generation_params=generation_params,
+            evolution_mode=evolution
         )
         console.print(f"[green]Saved to dataset store: {name}[/green]")
         console.print(f"[green]File: {filepath}[/green]")

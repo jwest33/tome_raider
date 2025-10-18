@@ -310,7 +310,7 @@ class TemporalFactRewriteStrategy(RepairStrategy):
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize temporal fact rewrite strategy."""
         super().__init__(config)
-        self.max_instruction_length = self.config.get("max_instruction_length", 500)
+        self.max_instruction_length = self.config.get("max_instruction_length", 1200)
         self.model_path = self.config.get("model_path")
         self.llm_manager = None
 
@@ -334,13 +334,14 @@ class TemporalFactRewriteStrategy(RepairStrategy):
             if not success:
                 raise RuntimeError(f"Failed to load model: {self.model_path}")
 
-    def _rewrite_fact(self, fact: str, max_length: int) -> str:
+    def _rewrite_fact(self, fact: str, max_length: int, is_evolution_mode: bool = False) -> str:
         """
         Use LLM to rewrite a temporal fact more concisely.
 
         Args:
             fact: Temporal fact to rewrite
             max_length: Maximum character length
+            is_evolution_mode: Whether this is an evolution mode story (vs factual variation)
 
         Returns:
             Rewritten fact
@@ -350,7 +351,30 @@ class TemporalFactRewriteStrategy(RepairStrategy):
         # Calculate target length (aim for 90% of max to leave margin)
         target_length = int(max_length * 0.9)
 
-        prompt = f"""Rewrite the following factual statement to be more concise while preserving ALL exact details.
+        # Use different prompts for evolution mode (stories) vs variation mode (facts)
+        if is_evolution_mode:
+            prompt = f"""Condense the following story while preserving key narrative elements, dialogue, and emotional beats.
+
+CRITICAL RULES:
+1. Keep essential character names, actions, and plot points
+2. Preserve key dialogue (condense if needed but keep meaning)
+3. Maintain causal flow and emotional arc
+4. Remove meta-commentary like "**Story Beat 2**" or hour markers
+5. Keep it as a coherent narrative, not a single sentence
+6. Target length: {target_length} characters or less (currently {len(fact)} characters)
+
+Example transformation (for very long stories exceeding 1200 chars):
+Original (1450 chars): "After the quiet moment of personal triumph and emotional release, Marcus opened his phone at 7:47 AM to find a new notification: a direct message from an unknown account labeled "Lift With Me." The message read: "I saw your story this morning. I've been following your journey since Day 1 when you posted that first video. I'm training for my first meet too—nervous as hell. Can we train together? No pressure, just… solidarity." Marcus stared at the screen, his hands still trembling slightly from the workout. He hadn't expected this. He thought about all the reasons to say no—the vulnerability, the risk of disappointing someone else, the weight of being someone's inspiration. But then he thought about why he started posting in the first place. He hesitated for a long moment, then typed back: "I'd like that. When?" The reply came instantly, almost as if the person had been waiting: "Tomorrow. 6:30 AM. My gym on Fifth Street. Same barbell. We'll start light." Marcus smiled despite himself. **Story Beat 2 (2 hours after seed event)** He realized this was becoming more than just a personal journey."
+
+Rewritten (920 chars): "At 7:47 AM, Marcus opened his phone to find a DM from "Lift With Me": "I saw your story this morning. Been following since Day 1. Training for my first meet too—nervous as hell. Can we train together? No pressure, just solidarity." Marcus stared at the screen, hands still trembling from the workout. He hadn't expected this. He thought about the vulnerability, the risk of disappointing someone, the weight of being an inspiration. But then he remembered why he started posting. He hesitated, then typed: "I'd like that. When?" The reply came instantly: "Tomorrow. 6:30 AM. My gym on Fifth Street. Same barbell. We'll start light." Marcus smiled. This was becoming more than just a personal journey.""
+
+Now condense this story:
+Original ({len(fact)} chars): {fact}
+
+Condensed:"""
+        else:
+            # Variation mode: factual statements
+            prompt = f"""Rewrite the following factual statement to be more concise while preserving ALL exact details.
 
 CRITICAL RULES:
 1. Keep ALL numbers, dates, names, and statistics EXACTLY as they appear
@@ -422,13 +446,34 @@ Rewritten:"""
             # Check if fact (instruction) needs rewriting
             if sample.instruction and len(sample.instruction) > self.max_instruction_length:
                 original_len = len(sample.instruction)
+
+                # Detect evolution mode from metadata
+                is_evolution_mode = False
+                if hasattr(sample.metadata, 'custom') and sample.metadata.custom:
+                    is_evolution_mode = sample.metadata.custom.get("evolution_mode", False)
+
+                # Fallback: Detect narrative elements if metadata not available
+                if not is_evolution_mode:
+                    narrative_markers = [
+                        "**Story Beat",
+                        "Marcus ", "Jalen ", "Maya ",  # Common character names
+                        '" ',  # Dialogue quotes
+                        "DM from",
+                        "replied:",
+                        "The message read:"
+                    ]
+                    is_evolution_mode = any(marker in sample.instruction for marker in narrative_markers)
+
+                mode_label = "evolution story" if is_evolution_mode else "fact"
+
                 repaired.instruction = self._rewrite_fact(
                     sample.instruction,
-                    self.max_instruction_length
+                    self.max_instruction_length,
+                    is_evolution_mode=is_evolution_mode
                 )
                 new_len = len(repaired.instruction)
                 changes.append(
-                    f"Rewrote fact from {original_len} to {new_len} chars using LLM"
+                    f"Rewrote {mode_label} from {original_len} to {new_len} chars using LLM"
                 )
 
             return RepairResult(

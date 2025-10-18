@@ -21,7 +21,7 @@ class TemporalFactValidator:
         """
         self.config = config or {}
         self.min_fact_length = self.config.get("min_fact_length", 20)
-        self.max_fact_length = self.config.get("max_fact_length", 500)
+        self.max_fact_length = self.config.get("max_fact_length", 1200)
 
     def validate_sample(self, sample: Sample) -> ValidationResult:
         """
@@ -160,6 +160,13 @@ class TemporalFactValidator:
         warnings = []
 
         for group_id, samples in groups.items():
+            # Detect if this is evolution mode (check first sample's metadata)
+            is_evolution_mode = False
+            if samples:
+                first_sample = samples[0][1]
+                if hasattr(first_sample.metadata, 'custom') and first_sample.metadata.custom:
+                    is_evolution_mode = first_sample.metadata.custom.get("evolution_mode", False)
+
             # Check variation IDs are sequential
             variation_ids = [s[1].metadata.custom.get("variation_id") for s in samples]
             expected_ids = list(range(1, len(samples) + 1))
@@ -170,13 +177,14 @@ class TemporalFactValidator:
                     f"Expected {expected_ids}, got {sorted(variation_ids)}"
                 )
 
-            # Check for duplicate facts within group
-            facts = [s[1].instruction.strip().lower() for s in samples]
-            if len(facts) != len(set(facts)):
-                duplicates = [f for f in facts if facts.count(f) > 1]
-                warnings.append(
-                    f"Group {group_id}: Contains {len(duplicates)} duplicate facts"
-                )
+            # Check for duplicate facts within group (skip for evolution mode)
+            if not is_evolution_mode:
+                facts = [s[1].instruction.strip().lower() for s in samples]
+                if len(facts) != len(set(facts)):
+                    duplicates = [f for f in facts if facts.count(f) > 1]
+                    warnings.append(
+                        f"Group {group_id}: Contains {len(duplicates)} duplicate facts"
+                    )
 
             # Check timestamps are sequential
             timestamps = []
@@ -211,10 +219,15 @@ class TemporalFactValidator:
         timestamps = []
         groups = set()
         facts_per_group = defaultdict(int)
+        is_evolution_mode = None
 
         for sample in dataset:
             if hasattr(sample.metadata, 'custom') and sample.metadata.custom:
                 custom = sample.metadata.custom
+
+                # Check evolution mode (from first sample that has it)
+                if is_evolution_mode is None:
+                    is_evolution_mode = custom.get("evolution_mode", False)
 
                 # Collect timestamp
                 ts_str = custom.get("timestamp")
@@ -233,6 +246,7 @@ class TemporalFactValidator:
         stats = {
             "total_facts": len(dataset),
             "num_groups": len(groups),
+            "mode": "evolution" if is_evolution_mode else "variation",
         }
 
         if facts_per_group:

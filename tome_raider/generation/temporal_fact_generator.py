@@ -43,6 +43,9 @@ class TemporalFactConfig:
     fact_domain: str = "news"  # news, science, business, sports, social, entertainment, technology
     seed: Optional[int] = None
 
+    # Evolution mode - generate connected story events instead of semantic variations
+    evolution_mode: bool = False
+
 
 DOMAIN_PROMPTS = {
     "news": """Generate ONE newsworthy factual event with specific numbers.
@@ -69,11 +72,11 @@ Example: "LeBron James scored 45 points in last night's game against the Boston 
 
 Your fact (include player/team names and numbers):""",
 
-    "social": """Generate ONE social media or trending event with specific metrics.
+    "social": """Generate ONE human social event or gathering with specific details.
 
-Example: "A viral cat video reached 15 million views on TikTok within 48 hours, becoming the platform's most-watched video this week."
+Example: "The annual neighborhood block party on Maple Street attracted 127 residents, including 35 children, who participated in activities from 2:00 PM to 8:00 PM."
 
-Your fact (include specific numbers and platform):""",
+Your fact (include specific numbers, location, and attendees):""",
 
     "entertainment": """Generate ONE entertainment industry fact with specific figures.
 
@@ -87,6 +90,97 @@ Example: "OpenAI's GPT-5 model achieved 94.2% accuracy on the MMLU benchmark, su
 
 Your fact (include product/company name and metrics):""",
 }
+
+
+# Evolution mode prompts - generate connected story events
+EVOLUTION_SEED_PROMPTS = {
+    "news": """Generate the FIRST event in a news story. This should be an initial newsworthy event that can naturally lead to follow-up developments.
+
+Example: "Breaking news reported that a major earthquake with magnitude 6.8 struck the Pacific coast at 3:45 AM local time."
+
+Your seed event (be specific with details):""",
+
+    "business": """Generate the FIRST event in a business story. This should be an initial business development that can naturally lead to consequences and reactions.
+
+Example: "TechCorp announced a surprise acquisition of StartupAI for $2.3 billion in an early morning press release."
+
+Your seed event (include company names and specific details):""",
+
+    "science": """Generate the FIRST event in a scientific discovery story. This should be an initial observation or finding that can lead to further analysis and implications.
+
+Example: "Researchers at the Lunar Observatory detected an unusual radio signal originating from the Andromeda galaxy at precisely 11:23 PM GMT."
+
+Your seed event (include specific measurements and details):""",
+
+    "sports": """Generate the FIRST event in a sports story. This should be an initial game moment or announcement that can lead to reactions and consequences.
+
+Example: "Star quarterback Marcus Williams suffered a knee injury in the first quarter of Sunday's playoff game against the Ravens."
+
+Your seed event (include player/team names and specific details):""",
+
+    "social": """Generate the FIRST event in a human social story. This should be an initial gathering, meeting, or social interaction that can lead to reactions and further developments.
+
+Example: "At 7:15 AM, community organizer Maria Rodriguez set up tables and chairs in the community center lobby for the first-ever neighborhood breakfast meeting, expecting 20-30 residents."
+
+Your seed event (include specific details, location, and people):""",
+
+    "entertainment": """Generate the FIRST event in an entertainment story. This should be an initial release, announcement, or event that can lead to reactions and box office/streaming developments.
+
+Example: "The blockbuster film 'Stellar Odyssey' premiered simultaneously in 4,200 theaters worldwide at midnight on Friday."
+
+Your seed event (include titles and specific details):""",
+
+    "technology": """Generate the FIRST event in a technology story. This should be an initial product launch or technical achievement that can lead to reactions and market developments.
+
+Example: "QuantumTech unveiled their first consumer quantum processor, the Q-Core 1000, at a press event in San Francisco at 10:00 AM PST."
+
+Your seed event (include product/company names and specific details):""",
+}
+
+
+EVOLUTION_OUTLINE_PROMPT = """Create a {num_events}-event story outline for the {domain} domain. Write {num_events} bullet points, each describing ONE specific event in sequence.
+
+Requirements:
+- Each bullet should be 50-80 characters (concise but specific)
+- Events should be connected and build on each other
+- Include specific details (names, numbers, actions)
+- Show clear progression over time
+- NO meta-commentary or labels (like "Event 1:" or "Hour 2:")
+
+Example for social domain (5 events):
+1. Maria sets up breakfast meeting at community center, expecting 20-30 residents
+2. 47 residents arrive, share concerns about local park maintenance
+3. Volunteers form committee, draft proposal for park improvements
+4. Committee presents 12-page proposal to city council meeting
+5. Council approves $15,000 budget for park renovation project
+
+Now write {num_events} connected events for {domain} domain:"""
+
+EVOLUTION_EXPAND_BULLET_PROMPT = """Expand this story event into a detailed description (target: 600-1100 characters).
+
+Event to expand: {bullet}
+
+Context - Previous events in this story:
+{previous_context}
+
+Requirements:
+- Expand into 600-1100 characters (aim for rich detail around 800-1000 chars)
+- Include specific details, actions, dialogue, and character thoughts/reactions
+- Show connection to previous events (use "after", "following", "then")
+- Keep it as a single coherent narrative moment or scene
+- NO meta-commentary or labels (like "Story Beat 2")
+
+Expanded event:"""
+
+# Legacy prompt - kept for reference but not used in outline-first approach
+EVOLUTION_NEXT_EVENT_PROMPT_LEGACY = """Continue this story with the next event that naturally follows.
+
+Story so far:
+{previous_events}
+
+Write the next event that connects to what happened before. Use words like "after", "following", "then", or "because" to show the connection.
+
+Next event:"""
 
 
 VARIATION_PROMPT = """Rewrite this fact {num_variations} different ways. Keep ALL numbers and names EXACTLY the same.
@@ -165,18 +259,24 @@ class FactGroupReviewer:
         Review variations for consistency and correct if needed.
 
         Args:
-            seed_fact: Original seed fact
-            variations: List of variation strings
+            seed_fact: Original seed fact (or seed event in evolution mode)
+            variations: List of variation strings (or events in evolution mode)
 
         Returns:
-            Corrected list of variations
+            Corrected list of variations/events
         """
         self.stats["groups_reviewed"] += 1
 
         if not self.config.enable_review:
             return variations
 
-        # Run LLM review
+        # Skip review for evolution mode (events should be different and connected)
+        if self.config.evolution_mode:
+            logger.debug("Skipping variation review for evolution mode")
+            self.stats["groups_passed"] += 1
+            return variations
+
+        # Run LLM review for standard variation mode
         review_result = self._review_group(seed_fact, variations)
 
         if review_result is None:
@@ -432,45 +532,73 @@ class TemporalFactGenerator:
         for group_idx in range(self.config.num_fact_groups):
             logger.info(f"Generating fact group {group_idx + 1}/{self.config.num_fact_groups}")
 
-            # Generate seed fact with retries
-            seed_fact = self._generate_seed_fact_with_retry()
-            if not seed_fact:
-                logger.error(f"Failed to generate seed fact for group {group_idx} after all retries")
-                failed_groups += 1
-                continue
-
-            logger.debug(f"Seed fact: {seed_fact}")
-
-            # Generate variations with retries
-            variations = self._generate_variations_with_retry(seed_fact)
-            if not variations:
-                logger.error(f"Failed to generate variations for group {group_idx} after all retries")
-                failed_groups += 1
-                continue
-
-            # Ensure we have the requested number of variations
-            variations = variations[:self.config.variations_per_group]
-
-            # If we didn't get enough variations, pad with the seed fact
-            while len(variations) < self.config.variations_per_group:
-                variations.append(seed_fact)
-
-            # Review and correct if enabled
-            if self.reviewer:
-                variations = self.reviewer.review_and_correct(seed_fact, variations)
-
             # Assign timestamps to this group
             timestamps = timestamp_ranges[group_idx]
 
-            # Create fact entries
-            group_id = f"group_{group_idx + 1:03d}"
-            for var_idx, (fact, timestamp) in enumerate(zip(variations, timestamps)):
-                all_facts.append({
-                    "timestamp": timestamp.isoformat(),
-                    "fact": fact.strip(),
-                    "group_id": group_id,
-                    "variation_id": var_idx + 1,
-                })
+            # Branch based on evolution mode
+            if self.config.evolution_mode:
+                # Evolution mode: generate connected story events
+                events = self._generate_evolved_group(group_idx, timestamps)
+                if not events:
+                    logger.error(f"Failed to generate evolved group {group_idx} after all retries")
+                    failed_groups += 1
+                    continue
+
+                # Ensure we have the requested number of events
+                events = events[:self.config.variations_per_group]
+
+                # If we didn't get enough events, pad with fallback
+                while len(events) < self.config.variations_per_group:
+                    events.append("Additional developments continued to unfold in the ongoing situation.")
+
+                # Create fact entries for evolution mode
+                group_id = f"group_{group_idx + 1:03d}"
+                for event_idx, (event, timestamp) in enumerate(zip(events, timestamps)):
+                    all_facts.append({
+                        "timestamp": timestamp.isoformat(),
+                        "fact": event.strip(),
+                        "group_id": group_id,
+                        "variation_id": event_idx + 1,
+                    })
+
+            else:
+                # Standard variation mode: generate semantic variations of one fact
+                # Generate seed fact with retries
+                seed_fact = self._generate_seed_fact_with_retry()
+                if not seed_fact:
+                    logger.error(f"Failed to generate seed fact for group {group_idx} after all retries")
+                    failed_groups += 1
+                    continue
+
+                logger.debug(f"Seed fact: {seed_fact}")
+
+                # Generate variations with retries
+                variations = self._generate_variations_with_retry(seed_fact)
+                if not variations:
+                    logger.error(f"Failed to generate variations for group {group_idx} after all retries")
+                    failed_groups += 1
+                    continue
+
+                # Ensure we have the requested number of variations
+                variations = variations[:self.config.variations_per_group]
+
+                # If we didn't get enough variations, pad with the seed fact
+                while len(variations) < self.config.variations_per_group:
+                    variations.append(seed_fact)
+
+                # Review and correct if enabled
+                if self.reviewer:
+                    variations = self.reviewer.review_and_correct(seed_fact, variations)
+
+                # Create fact entries
+                group_id = f"group_{group_idx + 1:03d}"
+                for var_idx, (fact, timestamp) in enumerate(zip(variations, timestamps)):
+                    all_facts.append({
+                        "timestamp": timestamp.isoformat(),
+                        "fact": fact.strip(),
+                        "group_id": group_id,
+                        "variation_id": var_idx + 1,
+                    })
 
             successful_groups += 1
 
@@ -724,6 +852,471 @@ class TemporalFactGenerator:
 
         return variations[:self.config.variations_per_group]
 
+    def _get_context_aware_fallback(self, seed_event: str, event_number: int) -> str:
+        """
+        Generate a context-aware fallback event when LLM generation fails.
+
+        Args:
+            seed_event: The initial seed event for context
+            event_number: Which event number this is in the sequence
+
+        Returns:
+            A fallback event string that references the story context
+        """
+        # Extract key terms from seed event for context
+        # Simple heuristic: get domain-relevant words
+        domain_templates = {
+            "news": [
+                "Following the initial reports, authorities provided additional updates on the developing situation.",
+                "As the story developed, new details emerged about the circumstances surrounding the incident.",
+                "In the hours that followed, officials released more information to the public.",
+            ],
+            "business": [
+                "Following the announcement, market analysts weighed in on the potential implications.",
+                "As the news spread, stakeholders began assessing the impact on operations.",
+                "In subsequent trading sessions, further market reactions developed.",
+            ],
+            "social": [
+                "After the initial gathering began, more people arrived and conversations developed.",
+                "As word spread through the community, additional residents joined the event.",
+                "Following the initial meeting, participants began organizing follow-up activities.",
+            ],
+            "sports": [
+                "Following the game, coaches and players addressed the media about the outcome.",
+                "As news spread, fans and analysts reacted to the development.",
+                "In the aftermath, team officials discussed next steps.",
+            ],
+            "science": [
+                "Following the initial observation, researchers began detailed analysis of the data.",
+                "As the findings emerged, the scientific community took notice.",
+                "Subsequent analysis revealed additional insights about the phenomenon.",
+            ],
+            "entertainment": [
+                "Following the release, critics and audiences shared their reactions.",
+                "As word spread, box office tracking showed continued interest.",
+                "In the days that followed, industry insiders discussed the implications.",
+            ],
+            "technology": [
+                "Following the launch, tech analysts evaluated the new capabilities.",
+                "As users began testing the features, early reviews started appearing.",
+                "In subsequent announcements, additional details were revealed.",
+            ],
+        }
+
+        # Get templates for current domain or use generic
+        templates = domain_templates.get(self.config.fact_domain, domain_templates["news"])
+
+        # Rotate through templates based on event number
+        template_idx = event_number % len(templates)
+
+        return templates[template_idx]
+
+    def _generate_story_outline(self, num_events: int) -> Optional[List[str]]:
+        """
+        Generate a story outline with bullet-point events.
+
+        Args:
+            num_events: Number of events to include in outline
+
+        Returns:
+            List of bullet-point event descriptions, or None if failed
+        """
+        prompt = EVOLUTION_OUTLINE_PROMPT.format(
+            num_events=num_events,
+            domain=self.config.fact_domain
+        )
+
+        try:
+            result = self.llm_manager.generate(
+                prompt=prompt,
+                temperature=self.config.temperature,
+                max_tokens=num_events * 30,  # ~30 tokens per bullet
+                stop=["\n\n\n", "Example:", "Now write"]
+            )
+
+            if not result:
+                logger.warning("Outline generation returned empty result")
+                return None
+
+            # Parse bullets from result
+            bullets = []
+            lines = result.strip().split('\n')
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Remove numbering (1., 2., etc.)
+                if line and line[0].isdigit():
+                    parts = line.split('.', 1)
+                    if len(parts) > 1:
+                        line = parts[1].strip()
+                    else:
+                        continue
+                elif line.startswith('-') or line.startswith('*'):
+                    line = line[1:].strip()
+
+                # Skip lines that look like instructions or examples
+                if any(keyword in line.lower() for keyword in ["example", "requirement", "write", "event:", "bullet"]):
+                    continue
+
+                # Must be reasonable length (30-150 chars for a bullet)
+                if line and 30 <= len(line) <= 150:
+                    bullets.append(line)
+
+            if len(bullets) >= num_events * 0.6:  # Got at least 60% of requested bullets
+                logger.debug(f"Generated outline with {len(bullets)} bullets")
+                return bullets[:num_events]  # Take only what we need
+            else:
+                logger.warning(f"Outline generation produced only {len(bullets)}/{num_events} bullets")
+                return None
+
+        except Exception as e:
+            logger.error(f"Outline generation failed: {e}")
+            return None
+
+    def _expand_outline_bullet(
+        self,
+        bullet: str,
+        previous_events: List[str],
+        target_length_min: int = 600,
+        target_length_max: int = 1100
+    ) -> Optional[str]:
+        """
+        Expand a bullet-point event into a full description.
+
+        Args:
+            bullet: Bullet point to expand
+            previous_events: Previously expanded events for context
+            target_length_min: Minimum character length
+            target_length_max: Maximum character length
+
+        Returns:
+            Expanded event description, or None if failed
+        """
+        # Build context from previous events (last 2 for brevity)
+        if previous_events:
+            context_events = previous_events[-2:] if len(previous_events) > 2 else previous_events
+            previous_context = "\n".join([f"- {event[:100]}..." if len(event) > 100 else f"- {event}" for event in context_events])
+        else:
+            previous_context = "(This is the first event)"
+
+        prompt = EVOLUTION_EXPAND_BULLET_PROMPT.format(
+            bullet=bullet,
+            previous_context=previous_context
+        )
+
+        try:
+            result = self.llm_manager.generate(
+                prompt=prompt,
+                temperature=self.config.temperature,
+                max_tokens=200,  # Enough for 250-400 chars
+                stop=["\n\n\n", "Event to expand:", "Context:"]
+            )
+
+            if not result:
+                logger.warning(f"Expansion returned empty for bullet: {bullet[:50]}")
+                return None
+
+            # Clean up the result
+            event = result.strip()
+
+            # Remove "Expanded event:" prefix if present
+            if event.lower().startswith("expanded event:"):
+                event = event[15:].strip()
+            elif ":" in event[:40]:
+                parts = event.split(":", 1)
+                if len(parts) > 1 and any(keyword in parts[0].lower() for keyword in ["expanded", "event"]):
+                    event = parts[1].strip()
+
+            # Remove leading numbering
+            if event and len(event) > 3 and event[0].isdigit() and event[1:3] in ['. ', ') ']:
+                event = event[3:].strip()
+
+            # Remove quotes
+            event = event.strip('"\'')
+
+            # Check length
+            if not (target_length_min <= len(event) <= target_length_max):
+                logger.warning(f"Expanded event length {len(event)} outside target range {target_length_min}-{target_length_max}")
+                # If it's too long, truncate intelligently
+                if len(event) > target_length_max:
+                    # Try to truncate at sentence boundary
+                    truncate_pos = event.rfind('.', 0, target_length_max)
+                    if truncate_pos > target_length_max * 0.8:
+                        event = event[:truncate_pos + 1].strip()
+                    else:
+                        event = event[:target_length_max].strip()
+
+            logger.debug(f"Expanded bullet to {len(event)} chars: {event[:80]}...")
+            return event if len(event) >= 50 else None  # Minimum 50 chars
+
+        except Exception as e:
+            logger.error(f"Bullet expansion failed: {e}")
+            return None
+
+    def _generate_evolved_group(self, group_idx: int, timestamps: List[datetime]) -> List[str]:
+        """
+        Generate an evolved story group with connected events using outline-first approach.
+
+        Args:
+            group_idx: Index of the current group
+            timestamps: List of timestamps for this group's events
+
+        Returns:
+            List of connected event strings
+        """
+        logger.info(f"Generating evolved story for group {group_idx + 1} (outline-first approach)")
+
+        # Step 1: Generate story outline with retries
+        outline = None
+        for attempt in range(self.config.max_retries):
+            if attempt > 0:
+                delay = self.config.retry_delay * (2 ** attempt if self.config.use_exponential_backoff else 1)
+                logger.info(f"Retry outline generation attempt {attempt + 1}/{self.config.max_retries} after {delay:.1f}s")
+                time.sleep(delay)
+
+            outline = self._generate_story_outline(self.config.variations_per_group)
+            if outline and len(outline) >= self.config.variations_per_group * 0.6:
+                break
+
+        if not outline:
+            logger.error(f"Failed to generate outline for group {group_idx} after all retries")
+            return []
+
+        logger.info(f"Generated outline with {len(outline)} bullets for group {group_idx + 1}")
+        for i, bullet in enumerate(outline, 1):
+            logger.debug(f"  Bullet {i}: {bullet}")
+
+        # Ensure we have enough bullets (pad if needed)
+        while len(outline) < self.config.variations_per_group:
+            outline.append("Additional developments continued in the ongoing situation.")
+
+        # Step 2: Expand each bullet into a full event
+        events = []
+        for event_idx, bullet in enumerate(outline[:self.config.variations_per_group]):
+            logger.debug(f"Expanding event {event_idx + 1}/{self.config.variations_per_group}: {bullet[:60]}...")
+
+            # Try to expand with retries
+            expanded = None
+            for attempt in range(self.config.max_retries):
+                if attempt > 0:
+                    delay = self.config.retry_delay
+                    logger.debug(f"Retry expansion attempt {attempt + 1}/{self.config.max_retries}")
+                    time.sleep(delay)
+
+                expanded = self._expand_outline_bullet(
+                    bullet=bullet,
+                    previous_events=events,
+                    target_length_min=600,
+                    target_length_max=1100  # Target ~1000 chars for rich story detail
+                )
+
+                if expanded:
+                    break
+
+            if not expanded:
+                logger.warning(f"Failed to expand bullet {event_idx + 1}, using bullet as fallback")
+                # Use the bullet itself with context prefix
+                if events:
+                    expanded = f"Following the previous developments, {bullet.lower()}"
+                else:
+                    expanded = bullet
+                # Ensure minimum length
+                if len(expanded) < 50:
+                    expanded = f"At this stage of the unfolding events, {expanded}"
+
+            events.append(expanded)
+            logger.debug(f"Event {event_idx + 1} ({len(expanded)} chars): {expanded[:80]}...")
+
+        return events
+
+    def _generate_seed_event_with_retry(self) -> Optional[str]:
+        """
+        Generate a seed event for evolution mode with automatic retries.
+
+        Returns:
+            Generated seed event string or None if all retries failed
+        """
+        for attempt in range(self.config.max_retries):
+            try:
+                if attempt > 0:
+                    delay = self.config.retry_delay * (2 ** attempt if self.config.use_exponential_backoff else 1)
+                    logger.info(f"Retry attempt {attempt + 1}/{self.config.max_retries} after {delay:.1f}s delay")
+                    time.sleep(delay)
+
+                result = self._generate_seed_event()
+                if result and len(result) > 20:
+                    return result
+                else:
+                    logger.warning(f"Seed event generation attempt {attempt + 1} returned invalid/empty result")
+
+            except Exception as e:
+                logger.warning(f"Seed event generation attempt {attempt + 1} failed: {e}")
+
+        return None
+
+    def _generate_seed_event(self) -> Optional[str]:
+        """
+        Generate a seed event for evolution mode using LLM (single attempt).
+
+        Returns:
+            Generated seed event string or None if failed
+        """
+        # Get evolution seed prompt with fallback
+        if self.config.fact_domain in EVOLUTION_SEED_PROMPTS:
+            domain_prompt = EVOLUTION_SEED_PROMPTS[self.config.fact_domain]
+        else:
+            logger.warning(
+                f"Domain '{self.config.fact_domain}' not in EVOLUTION_SEED_PROMPTS, using 'news' as fallback"
+            )
+            domain_prompt = EVOLUTION_SEED_PROMPTS["news"]
+
+        # Use more tokens for seed events
+        max_tokens_for_seed = max(200, self.config.max_tokens)
+
+        result = self.llm_manager.generate(
+            prompt=domain_prompt,
+            temperature=self.config.temperature,
+            max_tokens=max_tokens_for_seed,
+            stop=["\n\n\n", "Example:", "Your seed event"]  # Minimal stop sequences
+        )
+
+        if result:
+            # Log raw output for debugging
+            logger.debug(f"Raw seed event output ({len(result)} chars): {result[:100]}...")
+
+            # Clean up the result - be less aggressive
+            event = result.strip()
+
+            # Only remove prefix if it's clearly at the start
+            if event.lower().startswith("your seed event:"):
+                event = event[16:].strip()
+            elif ":" in event[:40]:  # Only check first 40 chars for prefix
+                parts = event.split(":", 1)
+                if len(parts) > 1 and any(keyword in parts[0].lower() for keyword in ["event", "seed", "your", "fact"]):
+                    event = parts[1].strip()
+
+            # Remove leading numbering only if it's clearly a list number
+            if event and len(event) > 3 and event[0].isdigit() and event[1:3] in ['. ', ') ']:
+                event = event[3:].strip()
+
+            # Remove quotes only from start and end
+            event = event.strip('"\'')
+
+            # Only remove trailing markers, not ones in middle of text
+            for marker in ["Example:", "Your seed event"]:
+                if marker in event:
+                    marker_pos = event.find(marker)
+                    # Only cut if marker is in last 20% of text
+                    if marker_pos > len(event) * 0.8:
+                        event = event[:marker_pos].strip()
+
+            logger.debug(f"Cleaned seed event ({len(event)} chars): {event[:100]}...")
+
+            return event if event and len(event) > 10 else None
+
+        return None
+
+    def _generate_next_event_with_retry(self, seed_event: str, previous_events: List[str]) -> Optional[str]:
+        """
+        Generate the next event in an evolved story with automatic retries.
+
+        Args:
+            seed_event: The initial seed event
+            previous_events: List of all events generated so far (including seed)
+
+        Returns:
+            Generated next event string or None if all retries failed
+        """
+        for attempt in range(self.config.max_retries):
+            try:
+                if attempt > 0:
+                    delay = self.config.retry_delay * (2 ** attempt if self.config.use_exponential_backoff else 1)
+                    logger.debug(f"Retry attempt {attempt + 1}/{self.config.max_retries} for next event after {delay:.1f}s delay")
+                    time.sleep(delay)
+
+                result = self._generate_next_event(seed_event, previous_events)
+                if result and len(result) > 20:
+                    return result
+                else:
+                    logger.warning(f"Next event generation attempt {attempt + 1} returned invalid/empty result")
+
+            except Exception as e:
+                logger.warning(f"Next event generation attempt {attempt + 1} failed: {e}")
+
+        return None
+
+    def _generate_next_event(self, seed_event: str, previous_events: List[str]) -> Optional[str]:
+        """
+        Generate the next event in an evolved story using LLM (single attempt).
+
+        Args:
+            seed_event: The initial seed event
+            previous_events: List of all events generated so far
+
+        Returns:
+            Generated next event string or None if failed
+        """
+        # Implement context windowing - show seed + last 3 events for long stories
+        if len(previous_events) > 4:
+            context_events = [previous_events[0]] + previous_events[-3:]
+            events_display = [
+                f"1. {context_events[0]}",
+                "...",
+            ] + [f"{len(previous_events)-3+i}. {event}" for i, event in enumerate(context_events[1:])]
+            previous_events_text = "\n".join(events_display)
+        else:
+            previous_events_text = "\n".join([f"{i+1}. {event}" for i, event in enumerate(previous_events)])
+
+        prompt = EVOLUTION_NEXT_EVENT_PROMPT.format(
+            previous_events=previous_events_text
+        )
+
+        # Use more tokens for evolution events (200 instead of default 150)
+        max_tokens_for_event = max(200, self.config.max_tokens)
+
+        result = self.llm_manager.generate(
+            prompt=prompt,
+            temperature=self.config.temperature,
+            max_tokens=max_tokens_for_event,
+            stop=["\n\n\n", "Story so far:", "Next event:"]  # Minimal stop sequences
+        )
+
+        if result:
+            # Log raw output for debugging
+            logger.debug(f"Raw LLM output ({len(result)} chars): {result[:100]}...")
+
+            # Clean up the result - be less aggressive
+            event = result.strip()
+
+            # Only remove prefix if it's clearly at the start
+            if event.lower().startswith("next event:"):
+                event = event[11:].strip()
+            elif ":" in event[:30]:  # Only check first 30 chars for prefix
+                parts = event.split(":", 1)
+                if len(parts) > 1 and any(keyword in parts[0].lower() for keyword in ["event", "next"]):
+                    event = parts[1].strip()
+
+            # Remove leading numbering only if it's clearly a list number (e.g., "1. " or "5. ")
+            if event and len(event) > 3 and event[0].isdigit() and event[1:3] in ['. ', ') ']:
+                event = event[3:].strip()
+
+            # Remove quotes only from start and end
+            event = event.strip('"\'')
+
+            # Only remove markers if they appear at the end (not in middle of text)
+            for marker in ["Story so far:", "Next event:"]:
+                if event.endswith(marker):
+                    event = event[:-len(marker)].strip()
+
+            logger.debug(f"Cleaned event ({len(event)} chars): {event[:100]}...")
+
+            return event if event and len(event) > 10 else None
+
+        return None
+
     def cleanup(self):
         """Clean up resources."""
         if self._owns_llm and self.llm_manager:
@@ -750,6 +1343,7 @@ def generate_temporal_facts(
     temperature: float = 0.8,
     max_tokens: int = 150,
     seed: Optional[int] = None,
+    evolution_mode: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Generate temporal factual statements for embedding retrieval experiments.
@@ -757,7 +1351,7 @@ def generate_temporal_facts(
     Args:
         model_path: Path to LLM model file (.gguf)
         num_fact_groups: Number of distinct fact groups
-        variations_per_group: Number of variations per fact
+        variations_per_group: Number of variations per fact (or events in evolution mode)
         start_date: Start date (ISO format: YYYY-MM-DD)
         end_date: End date (ISO format: YYYY-MM-DD)
         frequency: Time frequency ('hourly', 'daily', 'minutes')
@@ -765,6 +1359,7 @@ def generate_temporal_facts(
         temperature: LLM sampling temperature
         max_tokens: Max tokens per generation
         seed: Random seed (not currently used)
+        evolution_mode: If True, generate connected story events instead of variations
 
     Returns:
         List of fact dictionaries with timestamp, fact, group_id, variation_id
@@ -775,6 +1370,13 @@ def generate_temporal_facts(
         ...     num_fact_groups=10,
         ...     variations_per_group=5,
         ...     frequency="hourly"
+        ... )
+        >>> # Evolution mode example
+        >>> stories = generate_temporal_facts(
+        ...     model_path="models/llama-7b.gguf",
+        ...     num_fact_groups=5,
+        ...     variations_per_group=7,
+        ...     evolution_mode=True
         ... )
     """
     config = TemporalFactConfig(
@@ -788,6 +1390,7 @@ def generate_temporal_facts(
         max_tokens=max_tokens,
         fact_domain=fact_domain,
         seed=seed,
+        evolution_mode=evolution_mode,
     )
 
     with TemporalFactGenerator(config) as generator:
@@ -795,13 +1398,15 @@ def generate_temporal_facts(
 
 
 def convert_to_samples(
-    facts: List[Dict[str, Any]]
+    facts: List[Dict[str, Any]],
+    evolution_mode: bool = False
 ) -> List:
     """
     Convert temporal facts to Sample objects for DatasetStore.
 
     Args:
         facts: List of temporal fact dictionaries
+        evolution_mode: Whether facts were generated in evolution mode
 
     Returns:
         List of Sample objects
@@ -810,13 +1415,20 @@ def convert_to_samples(
 
     samples = []
     for fact in facts:
+        # Determine appropriate tags based on mode
+        if evolution_mode:
+            tags = ["temporal", "embedding-experiment", "evolution", fact['group_id']]
+        else:
+            tags = ["temporal", "embedding-experiment", "variation", fact['group_id']]
+
         metadata = SourceMetadata(
             source_type="generated_temporal_facts",
-            tags=["temporal", "embedding-experiment", fact['group_id']],
+            tags=tags,
             custom={
                 "timestamp": fact['timestamp'],
                 "group_id": fact['group_id'],
                 "variation_id": fact['variation_id'],
+                "evolution_mode": evolution_mode,
             }
         )
 
@@ -835,7 +1447,8 @@ def save_to_dataset_store(
     facts: List[Dict[str, Any]],
     dataset_name: str,
     store_path: str = "./datasets",
-    generation_params: Optional[Dict[str, Any]] = None
+    generation_params: Optional[Dict[str, Any]] = None,
+    evolution_mode: bool = False
 ) -> str:
     """
     Save temporal facts to DatasetStore with indexing.
@@ -845,6 +1458,7 @@ def save_to_dataset_store(
         dataset_name: Name for the dataset
         store_path: Path to dataset store directory
         generation_params: Parameters used for generation (saved as metadata)
+        evolution_mode: Whether facts were generated in evolution mode
 
     Returns:
         Path to saved dataset
@@ -854,7 +1468,7 @@ def save_to_dataset_store(
     store = DatasetStore(base_path=store_path)
 
     # Convert to Sample objects
-    samples = convert_to_samples(facts)
+    samples = convert_to_samples(facts, evolution_mode=evolution_mode)
 
     # Prepare metadata
     metadata = {
@@ -862,6 +1476,7 @@ def save_to_dataset_store(
         "total_facts": len(facts),
         "num_groups": len(set(f['group_id'] for f in facts)),
         "generation_timestamp": datetime.now().isoformat(),
+        "evolution_mode": evolution_mode,
     }
 
     # Add generation parameters if provided
